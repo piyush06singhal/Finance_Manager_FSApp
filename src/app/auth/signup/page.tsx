@@ -69,42 +69,8 @@ export default function SignupPage() {
       }
 
       if (authData.user) {
-        // Wait a moment for auth to complete
-        await new Promise(resolve => setTimeout(resolve, 1000))
-
-        // Create profile in database - use upsert to avoid duplicates
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .upsert({
-            id: authData.user.id,
-            email,
-            name: name || username || email.split('@')[0],
-            created_at: new Date().toISOString(),
-          }, {
-            onConflict: 'id'
-          })
-
-        if (profileError) {
-          console.error('Profile creation error:', profileError)
-          alert(`Profile creation failed: ${profileError.message}. Please contact support.`)
-          setLoading(false)
-          return
-        }
-
-        // Verify profile was created
-        const { data: profileCheck } = await supabase
-          .from('profiles')
-          .select('id')
-          .eq('id', authData.user.id)
-          .single()
-
-        if (!profileCheck) {
-          alert('Profile verification failed. Please try logging in.')
-          setLoading(false)
-          return
-        }
-
-        // Success - redirect to dashboard
+        // Profile is created automatically by database trigger
+        // Just redirect to dashboard
         router.push('/dashboard')
         router.refresh()
       }
