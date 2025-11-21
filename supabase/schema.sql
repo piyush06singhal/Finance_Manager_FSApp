@@ -73,6 +73,7 @@ ALTER TABLE recurring_bills ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies
 CREATE POLICY "Users can view own profile" ON profiles FOR SELECT USING (auth.uid() = id);
+CREATE POLICY "Users can insert own profile" ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
 CREATE POLICY "Users can update own profile" ON profiles FOR UPDATE USING (auth.uid() = id);
 
 CREATE POLICY "Users can view own transactions" ON transactions FOR SELECT USING (auth.uid() = user_id);
@@ -94,3 +95,24 @@ CREATE POLICY "Users can view own bills" ON recurring_bills FOR SELECT USING (au
 CREATE POLICY "Users can insert own bills" ON recurring_bills FOR INSERT WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "Users can update own bills" ON recurring_bills FOR UPDATE USING (auth.uid() = user_id);
 CREATE POLICY "Users can delete own bills" ON recurring_bills FOR DELETE USING (auth.uid() = user_id);
+
+-- Automatic profile creation trigger
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.profiles (id, email, name, created_at)
+  VALUES (
+    NEW.id,
+    NEW.email,
+    COALESCE(NEW.raw_user_meta_data->>'name', NEW.email),
+    NOW()
+  )
+  ON CONFLICT (id) DO NOTHING;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
