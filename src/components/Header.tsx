@@ -42,7 +42,12 @@ export default function Header() {
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
+    setUser(null)
+    setUserName('')
     router.push('/auth/login')
+    router.refresh()
+    // Force reload to clear all cached data
+    window.location.href = '/auth/login'
   }
 
   return (
