@@ -1,40 +1,39 @@
-# Personal Finance App
+# Finance Manager
 
-A full-stack personal finance application built with Next.js 14, TypeScript, Tailwind CSS, and Supabase.
+A full-stack personal finance management application built with Next.js 14, TypeScript, Tailwind CSS, and Supabase. Track budgets, manage transactions, set savings goals, and monitor recurring bills with secure authentication.
 
 ## Features
 
-- **User Authentication**: Secure signup and login with Supabase Auth
-- **Overview Dashboard**: View all financial data at a glance
-- **Transactions Management**: Browse, search, sort, and filter transactions with pagination
-- **Budget Tracking**: Create and manage budgets with visual progress indicators
-- **Savings Pots**: Track savings goals with deposit/withdraw functionality
-- **Recurring Bills**: Monitor monthly bills with status tracking
-- **Responsive Design**: Fully responsive UI that works on all devices
-- **Keyboard Navigation**: Complete keyboard accessibility
-- **Advanced UI/UX**: Modern, clean interface with hover and focus states
+- **Secure Authentication** - Sign up/login with email and password, 2FA support
+- **Budget Management** - Create and track spending limits by category
+- **Transaction Tracking** - Record income and expenses with search and filtering
+- **Savings Goals (Pots)** - Set financial targets and monitor progress
+- **Recurring Bills** - Track monthly bills with status monitoring
+- **Profile Management** - Update personal information, change password, export data
+- **Responsive Design** - Optimized for mobile, tablet, and desktop
+- **Data Persistence** - All data securely stored in Supabase with Row Level Security
 
 ## Tech Stack
 
 - **Frontend**: Next.js 14 (App Router), React 18, TypeScript
 - **Styling**: Tailwind CSS
-- **Backend**: Supabase (PostgreSQL database, Authentication, Row Level Security)
+- **Backend**: Supabase (PostgreSQL, Authentication, RLS)
 - **Icons**: Lucide React
-- **Charts**: Recharts
+- **Deployment**: Vercel
 
 ## Getting Started
 
 ### Prerequisites
 
-- Node.js 18+ installed
-- A Supabase account and project
+- Node.js 18+
+- Supabase account
 
 ### Installation
 
 1. Clone the repository:
 ```bash
-git clone <repository-url>
-cd finance-app
+git clone https://github.com/piyush06singhal/Finance_Manager_FSApp.git
+cd Finance_Manager_FSApp
 ```
 
 2. Install dependencies:
@@ -42,95 +41,83 @@ cd finance-app
 npm install
 ```
 
-3. Set up Supabase:
-   - Create a new project at [supabase.com](https://supabase.com)
-   - Run the SQL schema from `supabase/schema.sql` in the Supabase SQL Editor
-   - Copy your project URL and anon key
-
-4. Create `.env.local` file:
+3. Set up environment variables:
 ```bash
-cp .env.local.example .env.local
-```
-
-5. Add your Supabase credentials to `.env.local`:
-```
+# Create .env.local file
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 ```
 
-6. Run the development server:
+4. Set up Supabase database:
+   - Create a project at [supabase.com](https://supabase.com)
+   - Run the SQL schema from `supabase/schema.sql` in the SQL Editor
+
+5. Run the development server:
 ```bash
 npm run dev
 ```
 
-7. Open [http://localhost:3000](http://localhost:3000) in your browser
-
-## Database Setup
-
-The application uses the following tables:
-- `profiles` - User profiles
-- `transactions` - Financial transactions
-- `budgets` - Budget categories and limits
-- `pots` - Savings pots/goals
-- `recurring_bills` - Monthly recurring bills
-
-All tables have Row Level Security (RLS) enabled to ensure users can only access their own data.
+6. Open [http://localhost:3000](http://localhost:3000)
 
 ## Project Structure
 
 ```
-finance-app/
 ├── src/
-│   ├── app/              # Next.js app router pages
+│   ├── app/              # Next.js App Router pages
 │   │   ├── auth/         # Authentication pages
-│   │   ├── dashboard/    # Main dashboard
-│   │   ├── transactions/ # Transactions page
-│   │   ├── budgets/      # Budgets page
-│   │   ├── pots/         # Savings pots page
-│   │   └── recurring-bills/ # Bills page
-│   ├── components/       # Reusable React components
-│   ├── lib/             # Utilities and Supabase client
-│   └── types/           # TypeScript type definitions
-├── supabase/            # Database schema
-└── public/              # Static assets
+│   │   ├── dashboard/    # Dashboard
+│   │   ├── budgets/      # Budget management
+│   │   ├── pots/         # Savings goals
+│   │   ├── transactions/ # Transaction tracking
+│   │   ├── recurring-bills/ # Bill management
+│   │   └── profile/      # User profile
+│   ├── components/       # Reusable components
+│   ├── lib/              # Utilities and Supabase client
+│   └── types/            # TypeScript type definitions
+├── supabase/             # Database schema and migrations
+└── public/               # Static assets
 ```
 
-## Features in Detail
+## Database Schema
 
-### Transactions
-- Paginated view (10 per page)
-- Search by name or category
-- Sort by date, amount, or name
-- Filter by category
-- View transaction details
+- **profiles** - User information
+- **budgets** - Budget categories and spending limits
+- **pots** - Savings goals and targets
+- **transactions** - Income and expense records
+- **recurring_bills** - Monthly bill tracking
 
-### Budgets
-- Create budgets for different categories
-- Visual progress bars
-- View latest 3 transactions per category
-- Track spending vs. budget limits
-- Color-coded themes
+All tables are protected with Row Level Security (RLS) policies.
 
-### Pots (Savings)
-- Set savings goals
-- Add or withdraw money
-- Track progress with visual indicators
-- Multiple pots for different goals
+## Deployment
 
-### Recurring Bills
-- Track monthly bills
-- Automatic status updates (paid/due/upcoming)
-- Search and sort functionality
-- Summary of total bills by status
+### Deploy to Vercel
 
-## Accessibility
+1. Push your code to GitHub
+2. Import project in Vercel
+3. Add environment variables:
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+4. Deploy
 
-- Full keyboard navigation support
-- Focus states on all interactive elements
-- ARIA labels for screen readers
-- Semantic HTML structure
-- Form validation with clear error messages
+### Configure Supabase
+
+Add your Vercel deployment URL to Supabase:
+- Go to Authentication → URL Configuration
+- Add your Vercel URL to Site URL and Redirect URLs
 
 ## License
 
 MIT
+
+## Author
+
+**Piyush Singhal**
+
+- LinkedIn: [piyush--singhal](https://www.linkedin.com/in/piyush--singhal/)
+- GitHub: [piyush06singhal](https://github.com/piyush06singhal)
+- Twitter: [@PiyushS07508112](https://x.com/PiyushS07508112)
+- Email: piyush.singhal.2004@gmail.com
+
+---
+
+Built with Next.js, TypeScript, and Supabase

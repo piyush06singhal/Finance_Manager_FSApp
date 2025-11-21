@@ -80,28 +80,34 @@ export default function Footer() {
             <h4 className="font-semibold mb-4">Connect</h4>
             <div className="flex gap-3">
               <a
-                href="#"
+                href="https://x.com/PiyushS07508112"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="w-10 h-10 bg-grey-500 hover:bg-primary rounded-lg flex items-center justify-center transition-colors"
                 aria-label="Twitter"
               >
                 <Twitter className="w-5 h-5" />
               </a>
               <a
-                href="#"
+                href="https://www.linkedin.com/in/piyush--singhal/"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="w-10 h-10 bg-grey-500 hover:bg-primary rounded-lg flex items-center justify-center transition-colors"
                 aria-label="LinkedIn"
               >
                 <Linkedin className="w-5 h-5" />
               </a>
               <a
-                href="#"
+                href="https://github.com/piyush06singhal"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="w-10 h-10 bg-grey-500 hover:bg-primary rounded-lg flex items-center justify-center transition-colors"
                 aria-label="GitHub"
               >
                 <Github className="w-5 h-5" />
               </a>
               <a
-                href="#"
+                href="mailto:piyush.singhal.2004@gmail.com"
                 className="w-10 h-10 bg-grey-500 hover:bg-primary rounded-lg flex items-center justify-center transition-colors"
                 aria-label="Email"
               >
