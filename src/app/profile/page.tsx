@@ -268,9 +268,52 @@ export default function ProfilePage() {
     }
   }
 
-  const handleDeleteAccount = () => {
-    if (confirm('Are you sure you want to delete your account? This action cannot be undone.')) {
-      alert('Account deletion requested')
+  const handleDeleteAccount = async () => {
+    const confirmed = confirm(
+      'Are you sure you want to delete your account? This will permanently delete:\n\n' +
+      '• Your profile\n' +
+      '• All budgets\n' +
+      '• All transactions\n' +
+      '• All savings goals\n' +
+      '• All recurring bills\n\n' +
+      'This action CANNOT be undone!'
+    )
+
+    if (!confirmed) return
+
+    const doubleConfirm = prompt('Type "DELETE" to confirm account deletion:')
+    
+    if (doubleConfirm !== 'DELETE') {
+      alert('Account deletion cancelled')
+      return
+    }
+
+    try {
+      if (!user) return
+
+      // Delete all user data (CASCADE will handle related data)
+      // The database has ON DELETE CASCADE, so deleting profile will delete everything
+      const { error: deleteError } = await supabase
+        .from('profiles')
+        .delete()
+        .eq('id', user.id)
+
+      if (deleteError) {
+        console.error('Error deleting profile:', deleteError)
+        alert(`Failed to delete account: ${deleteError.message}`)
+        return
+      }
+
+      // Delete the auth user
+      const { error: authError } = await supabase.auth.admin.deleteUser(user.id)
+      
+      // Even if auth deletion fails, sign out and redirect
+      await supabase.auth.signOut()
+      alert('Your account has been deleted successfully')
+      router.push('/')
+    } catch (error) {
+      console.error('Delete account error:', error)
+      alert('Failed to delete account. Please contact support.')
     }
   }
 
