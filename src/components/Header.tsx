@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { Home, Wallet, PieChart, ArrowLeftRight, User, LogOut } from 'lucide-react'
+import { Home, Wallet, PieChart, ArrowLeftRight, User, LogOut, HelpCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
 import { useEffect, useState } from 'react'
@@ -88,6 +88,17 @@ export default function Header() {
           <div className="flex items-center gap-3">
             {user ? (
               <>
+                <button
+                  onClick={() => {
+                    localStorage.removeItem('hasSeenWelcome')
+                    window.location.href = '/dashboard'
+                  }}
+                  className="p-2 hover:bg-beige-100 rounded-lg transition-colors"
+                  aria-label="Help"
+                  title="Show welcome guide"
+                >
+                  <HelpCircle className="w-5 h-5 text-grey-500" />
+                </button>
                 <div className="flex items-center gap-2">
                   <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center">
                     <span className="text-white font-semibold">

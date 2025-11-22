@@ -15,9 +15,15 @@ export default function DashboardPage() {
   const [budgets, setBudgets] = useState<Budget[]>([])
   const [pots, setPots] = useState<Pot[]>([])
   const [loading, setLoading] = useState(true)
+  const [showWelcome, setShowWelcome] = useState(false)
 
   useEffect(() => {
     checkUser()
+    // Check if user has seen welcome popup
+    const hasSeenWelcome = localStorage.getItem('hasSeenWelcome')
+    if (!hasSeenWelcome) {
+      setShowWelcome(true)
+    }
   }, [])
 
   const checkUser = async () => {
@@ -352,6 +358,106 @@ export default function DashboardPage() {
           </Card>
         )}
       </div>
+
+      {/* Welcome Modal */}
+      {showWelcome && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-3xl font-bold text-grey-900">Welcome to Finance Manager! 👋</h2>
+              <button
+                onClick={() => {
+                  setShowWelcome(false)
+                  localStorage.setItem('hasSeenWelcome', 'true')
+                }}
+                className="p-2 hover:bg-grey-100 rounded-lg transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <p className="text-grey-600 mb-8 text-lg">
+              Your personal finance tracking app to manage budgets, track expenses, and achieve your savings goals.
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+              <div className="p-4 bg-gradient-to-br from-blue-50 to-white rounded-lg border border-blue-100">
+                <div className="w-12 h-12 bg-primary rounded-full flex items-center justify-center mb-3">
+                  <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                  </svg>
+                </div>
+                <h3 className="font-bold text-grey-900 mb-2">💰 Budgets</h3>
+                <p className="text-sm text-grey-600">Set spending limits for different categories and track your expenses in real-time.</p>
+              </div>
+
+              <div className="p-4 bg-gradient-to-br from-green-50 to-white rounded-lg border border-green-100">
+                <div className="w-12 h-12 bg-primary rounded-full flex items-center justify-center mb-3">
+                  <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
+                  </svg>
+                </div>
+                <h3 className="font-bold text-grey-900 mb-2">💸 Transactions</h3>
+                <p className="text-sm text-grey-600">Record all your income and expenses with detailed categorization and notes.</p>
+              </div>
+
+              <div className="p-4 bg-gradient-to-br from-purple-50 to-white rounded-lg border border-purple-100">
+                <div className="w-12 h-12 bg-accent-cyan rounded-full flex items-center justify-center mb-3">
+                  <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                  </svg>
+                </div>
+                <h3 className="font-bold text-grey-900 mb-2">🎯 Savings Goals</h3>
+                <p className="text-sm text-grey-600">Create savings pots for your goals and watch your progress grow over time.</p>
+              </div>
+
+              <div className="p-4 bg-gradient-to-br from-yellow-50 to-white rounded-lg border border-yellow-100">
+                <div className="w-12 h-12 bg-accent-yellow rounded-full flex items-center justify-center mb-3">
+                  <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <h3 className="font-bold text-grey-900 mb-2">📅 Recurring Bills</h3>
+                <p className="text-sm text-grey-600">Never miss a payment! Track all your monthly bills and subscriptions in one place.</p>
+              </div>
+            </div>
+
+            <div className="bg-beige-100 rounded-lg p-6 mb-6">
+              <h3 className="font-bold text-grey-900 mb-4 text-lg">🚀 Quick Start Guide:</h3>
+              <ol className="space-y-3">
+                <li className="flex items-start gap-3">
+                  <span className="flex-shrink-0 w-6 h-6 bg-primary text-white rounded-full flex items-center justify-center text-sm font-bold">1</span>
+                  <span className="text-grey-700"><strong>Add your first transaction</strong> - Click the "+" button to record income or expenses</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <span className="flex-shrink-0 w-6 h-6 bg-primary text-white rounded-full flex items-center justify-center text-sm font-bold">2</span>
+                  <span className="text-grey-700"><strong>Create a budget</strong> - Set spending limits for categories like Food, Transport, etc.</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <span className="flex-shrink-0 w-6 h-6 bg-primary text-white rounded-full flex items-center justify-center text-sm font-bold">3</span>
+                  <span className="text-grey-700"><strong>Set savings goals</strong> - Create pots for vacation, emergency fund, or any goal</span>
+                </li>
+                <li className="flex items-start gap-3">
+                  <span className="flex-shrink-0 w-6 h-6 bg-primary text-white rounded-full flex items-center justify-center text-sm font-bold">4</span>
+                  <span className="text-grey-700"><strong>Track recurring bills</strong> - Add monthly subscriptions and bills to never miss a payment</span>
+                </li>
+              </ol>
+            </div>
+
+            <button
+              onClick={() => {
+                setShowWelcome(false)
+                localStorage.setItem('hasSeenWelcome', 'true')
+              }}
+              className="btn-primary w-full text-lg py-3"
+            >
+              Got It! Let's Get Started 🎉
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
