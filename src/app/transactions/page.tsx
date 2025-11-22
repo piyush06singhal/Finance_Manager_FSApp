@@ -264,20 +264,22 @@ export default function TransactionsPage() {
             <select
               value={filterCategory}
               onChange={(e) => setFilterCategory(e.target.value)}
-            className="input"
-          >
-            <option value="all">All Categories</option>
-            {categories.map(cat => (
-              <option key={cat} value={cat}>{cat}</option>
-            ))}
-          </select>
+              className="input"
+            >
+              <option value="all">All Categories</option>
+              {categories.map(cat => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
+            </select>
+          </div>
+        </div>
 
-          <button
-            onClick={() => setShowModal(true)}
-            className="btn-primary flex items-center justify-center gap-2"
-          >
-            <Plus className="w-5 h-5" />
-            Add Transaction
+        <button
+          onClick={() => setShowModal(true)}
+          className="btn-primary flex items-center justify-center gap-2 mt-4"
+        >
+          <Plus className="w-5 h-5" />
+          Add Transaction
           </button>
         </div>
 
