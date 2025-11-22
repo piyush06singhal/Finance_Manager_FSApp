@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import Card from '@/components/Card'
 import { formatCurrency } from '@/lib/utils'
 import { RecurringBill } from '@/types'
-import { Search, Plus } from 'lucide-react'
+import { Search, Plus, X, Calendar, DollarSign } from 'lucide-react'
 
 export default function RecurringBillsPage() {
   const [bills, setBills] = useState<RecurringBill[]>([])
@@ -13,6 +13,12 @@ export default function RecurringBillsPage() {
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [sortBy, setSortBy] = useState<'name' | 'amount' | 'due_date'>('due_date')
+  const [showModal, setShowModal] = useState(false)
+  const [formData, setFormData] = useState({
+    name: '',
+    amount: '',
+    due_date: '1',
+  })
 
   useEffect(() => {
     checkAuthAndFetch()
@@ -44,7 +50,6 @@ export default function RecurringBillsPage() {
         .single()
 
       if (!profile) {
-        // Create profile if missing
         await supabase.from('profiles').upsert({
           id: user.id,
           email: user.email || '',
@@ -73,6 +78,44 @@ export default function RecurringBillsPage() {
     if (today === dueDate) return 'due'
     if (today > dueDate) return 'paid'
     return 'upcoming'
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      alert('Please login to add a bill')
+      return
+    }
+
+    try {
+      const { data, error } = await supabase.from('recurring_bills').insert({
+        user_id: user.id,
+        name: formData.name,
+        amount: parseFloat(formData.amount),
+        due_date: parseInt(formData.due_date),
+        status: 'upcoming',
+      }).select()
+
+      if (error) {
+        console.error('Error creating bill:', error)
+        alert(`Failed to create bill: ${error.message}`)
+        return
+      }
+
+      setShowModal(false)
+      setFormData({
+        name: '',
+        amount: '',
+        due_date: '1',
+      })
+      
+      fetchBills()
+    } catch (err) {
+      console.error('Unexpected error:', err)
+      alert('An unexpected error occurred')
+    }
   }
 
   const applyFilters = () => {
@@ -104,25 +147,51 @@ export default function RecurringBillsPage() {
   return (
     <div className="max-w-7xl mx-auto px-6 py-8">
       <div className="flex items-center justify-between mb-8">
-        <h1>Recurring Bills</h1>
-        <button className="btn-primary flex items-center gap-2">
+        <div>
+          <h1 className="text-4xl font-bold text-grey-900 mb-2">Recurring Bills</h1>
+          <p className="text-grey-500">Manage your monthly bills and subscriptions</p>
+        </div>
+        <button 
+          onClick={() => setShowModal(true)}
+          className="btn-primary flex items-center gap-2"
+        >
           <Plus className="w-5 h-5" />
           Add Bill
         </button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <Card>
-          <p className="text-sm text-grey-500 mb-2">Paid Bills</p>
-          <p className="text-3xl font-bold">{formatCurrency(totalPaid)}</p>
+        <Card className="bg-gradient-to-br from-green-50 to-white">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
+              <DollarSign className="w-5 h-5 text-primary" />
+            </div>
+            <span className="text-grey-500">Paid Bills</span>
+          </div>
+          <p className="text-3xl font-bold text-grey-900">{formatCurrency(totalPaid)}</p>
+          <p className="text-sm text-grey-500 mt-1">{bills.filter(b => b.status === 'paid').length} bills</p>
         </Card>
-        <Card>
-          <p className="text-sm text-grey-500 mb-2">Total Upcoming</p>
-          <p className="text-3xl font-bold text-accent-yellow">{formatCurrency(totalUpcoming)}</p>
+
+        <Card className="bg-gradient-to-br from-yellow-50 to-white">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-10 h-10 bg-accent-yellow/10 rounded-full flex items-center justify-center">
+              <Calendar className="w-5 h-5 text-accent-yellow" />
+            </div>
+            <span className="text-grey-500">Total Upcoming</span>
+          </div>
+          <p className="text-3xl font-bold text-grey-900">{formatCurrency(totalUpcoming)}</p>
+          <p className="text-sm text-grey-500 mt-1">{bills.filter(b => b.status === 'upcoming').length} bills</p>
         </Card>
-        <Card>
-          <p className="text-sm text-grey-500 mb-2">Due Soon</p>
-          <p className="text-3xl font-bold text-accent-red">{formatCurrency(totalDue)}</p>
+
+        <Card className="bg-gradient-to-br from-red-50 to-white">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-10 h-10 bg-accent-red/10 rounded-full flex items-center justify-center">
+              <Calendar className="w-5 h-5 text-accent-red" />
+            </div>
+            <span className="text-grey-500">Due Soon</span>
+          </div>
+          <p className="text-3xl font-bold text-grey-900">{formatCurrency(totalDue)}</p>
+          <p className="text-sm text-grey-500 mt-1">{bills.filter(b => b.status === 'due').length} bills</p>
         </Card>
       </div>
 
@@ -153,21 +222,43 @@ export default function RecurringBillsPage() {
 
       <Card>
         {filteredBills.length === 0 ? (
-          <p className="text-center text-grey-500 py-8">No recurring bills found</p>
+          <div className="text-center py-16">
+            <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Calendar className="w-10 h-10 text-primary" />
+            </div>
+            <h3 className="text-xl font-bold text-grey-900 mb-2">No recurring bills yet</h3>
+            <p className="text-grey-500 mb-6">
+              {searchTerm ? 'No bills match your search' : 'Start tracking your monthly bills and subscriptions'}
+            </p>
+            {!searchTerm && (
+              <button
+                onClick={() => setShowModal(true)}
+                className="btn-primary inline-flex items-center gap-2"
+              >
+                <Plus className="w-5 h-5" />
+                Add Your First Bill
+              </button>
+            )}
+          </div>
         ) : (
           <div className="space-y-3">
             {filteredBills.map((bill) => (
               <div
                 key={bill.id}
-                className="flex items-center justify-between py-4 border-b border-grey-100 last:border-0"
+                className="flex items-center justify-between py-4 px-4 border-b border-grey-100 last:border-0 hover:bg-beige-100 rounded-lg transition-colors"
               >
                 <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-full bg-beige-100 flex items-center justify-center">
-                    {bill.avatar || bill.name.charAt(0)}
+                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary to-accent-cyan flex items-center justify-center">
+                    <span className="text-white font-bold text-lg">
+                      {bill.avatar || bill.name.charAt(0).toUpperCase()}
+                    </span>
                   </div>
                   <div>
-                    <p className="font-semibold">{bill.name}</p>
-                    <p className="text-sm text-grey-500">Due on {bill.due_date}{bill.due_date === 1 ? 'st' : bill.due_date === 2 ? 'nd' : bill.due_date === 3 ? 'rd' : 'th'}</p>
+                    <p className="font-semibold text-grey-900">{bill.name}</p>
+                    <p className="text-sm text-grey-500">
+                      Due on {bill.due_date}
+                      {bill.due_date === 1 ? 'st' : bill.due_date === 2 ? 'nd' : bill.due_date === 3 ? 'rd' : 'th'} of each month
+                    </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-4">
@@ -182,13 +273,96 @@ export default function RecurringBillsPage() {
                   >
                     {bill.status.charAt(0).toUpperCase() + bill.status.slice(1)}
                   </span>
-                  <p className="font-bold w-24 text-right">{formatCurrency(Number(bill.amount))}</p>
+                  <p className="font-bold text-lg w-28 text-right">{formatCurrency(Number(bill.amount))}</p>
                 </div>
               </div>
             ))}
           </div>
         )}
       </Card>
+
+      {/* Add Bill Modal */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h3 className="text-2xl font-bold text-grey-900">Add Recurring Bill</h3>
+                <p className="text-sm text-grey-500">Add a monthly bill or subscription</p>
+              </div>
+              <button
+                onClick={() => setShowModal(false)}
+                className="p-2 hover:bg-grey-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-semibold text-grey-900 mb-2">
+                  Bill Name
+                </label>
+                <input
+                  type="text"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  placeholder="e.g., Netflix, Rent, Phone Bill"
+                  className="input"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-grey-900 mb-2">
+                  Amount
+                </label>
+                <input
+                  type="number"
+                  value={formData.amount}
+                  onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                  placeholder="0.00"
+                  className="input"
+                  required
+                  min="0"
+                  step="0.01"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-grey-900 mb-2">
+                  Due Date (Day of Month)
+                </label>
+                <select
+                  value={formData.due_date}
+                  onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
+                  className="input"
+                  required
+                >
+                  {Array.from({ length: 31 }, (_, i) => i + 1).map(day => (
+                    <option key={day} value={day}>
+                      {day}{day === 1 ? 'st' : day === 2 ? 'nd' : day === 3 ? 'rd' : 'th'} of the month
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowModal(false)}
+                  className="btn-secondary flex-1"
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="btn-primary flex-1">
+                  Add Bill
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
