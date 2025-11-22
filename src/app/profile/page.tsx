@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import Card from '@/components/Card'
-import { User, Mail, Calendar, Lock, Shield, Smartphone, Download, Trash2, Edit, Check, Bell, Globe, DollarSign } from 'lucide-react'
+import { Lock, Download, Trash2, Edit, Check } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 
 export default function ProfilePage() {
@@ -12,9 +12,9 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [isEditing, setIsEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
   const [editForm, setEditForm] = useState({
     name: '',
-    username: '',
     phone: '',
     bio: '',
   })
@@ -24,22 +24,21 @@ export default function ProfilePage() {
     currency: 'USD',
     language: 'English (US)',
   })
+  const [settingsSaved, setSettingsSaved] = useState(false)
   const [showPasswordModal, setShowPasswordModal] = useState(false)
   const [passwordForm, setPasswordForm] = useState({
-    currentPassword: '',
     newPassword: '',
     confirmPassword: '',
   })
   const [passwordError, setPasswordError] = useState('')
   const [passwordSuccess, setPasswordSuccess] = useState(false)
-  const [show2FAModal, setShow2FAModal] = useState(false)
-  const [twoFactorEnabled, setTwoFactorEnabled] = useState(false)
-  const [qrCode, setQrCode] = useState('')
-  const [verificationCode, setVerificationCode] = useState('')
-  const [currentFactorId, setCurrentFactorId] = useState('')
+  const [showExportSuccess, setShowExportSuccess] = useState(false)
+  const [showDevicesModal, setShowDevicesModal] = useState(false)
+  const [sessions, setSessions] = useState<any[]>([])
 
   useEffect(() => {
     fetchProfile()
+    fetchSessions()
   }, [])
 
   const fetchProfile = async () => {
@@ -61,57 +60,82 @@ export default function ProfilePage() {
     setProfile(data)
     setEditForm({
       name: data?.name || '',
-      username: data?.email?.split('@')[0] || '',
-      phone: '',
-      bio: '',
+      phone: data?.phone || '',
+      bio: data?.bio || '',
     })
-
-    // Check if 2FA is already enabled
-    const { data: factors } = await supabase.auth.mfa.listFactors()
-    if (factors && factors.totp && factors.totp.length > 0) {
-      setTwoFactorEnabled(true)
-    }
 
     setLoading(false)
   }
 
-  const handleSaveProfile = async () => {
-    if (!user) return
-
-    await supabase
-      .from('profiles')
-      .update({ name: editForm.name })
-      .eq('id', user.id)
-
-    setIsEditing(false)
-    fetchProfile()
+  const fetchSessions = async () => {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (session) {
+      setSessions([{
+        id: 1,
+        device: 'Current Device',
+        location: 'Current Session',
+        lastActive: new Date().toISOString(),
+        current: true
+      }])
+    }
   }
 
-  const [showExportSuccess, setShowExportSuccess] = useState(false)
+  const handleSaveProfile = async () => {
+    if (!user) return
+    setSaving(true)
+
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ 
+          name: editForm.name,
+          phone: editForm.phone,
+          bio: editForm.bio
+        })
+        .eq('id', user.id)
+
+      if (error) {
+        alert(`Failed to update profile: ${error.message}`)
+      } else {
+        setIsEditing(false)
+        fetchProfile()
+        alert('Profile updated successfully!')
+      }
+    } catch (err) {
+      alert('Failed to update profile')
+    }
+    
+    setSaving(false)
+  }
+
+  const handleSaveSettings = () => {
+    // Save settings to localStorage for now
+    localStorage.setItem('userSettings', JSON.stringify(settings))
+    setSettingsSaved(true)
+    setTimeout(() => setSettingsSaved(false), 3000)
+  }
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault()
     setPasswordError('')
     setPasswordSuccess(false)
 
-    // Validation
-    if (!passwordForm.currentPassword || !passwordForm.newPassword || !passwordForm.confirmPassword) {
+    if (!passwordForm.newPassword || !passwordForm.confirmPassword) {
       setPasswordError('All fields are required')
       return
     }
 
     if (passwordForm.newPassword.length < 6) {
-      setPasswordError('New password must be at least 6 characters')
+      setPasswordError('Password must be at least 6 characters')
       return
     }
 
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      setPasswordError('New passwords do not match')
+      setPasswordError('Passwords do not match')
       return
     }
 
     try {
-      // Update password in Supabase
       const { error } = await supabase.auth.updateUser({
         password: passwordForm.newPassword
       })
@@ -121,10 +145,8 @@ export default function ProfilePage() {
         return
       }
 
-      // Success
       setPasswordSuccess(true)
       setPasswordForm({
-        currentPassword: '',
         newPassword: '',
         confirmPassword: '',
       })
@@ -134,88 +156,7 @@ export default function ProfilePage() {
         setPasswordSuccess(false)
       }, 2000)
     } catch (err) {
-      setPasswordError('Failed to change password. Please try again.')
-    }
-  }
-
-  const handleEnable2FA = async () => {
-    try {
-      // Enroll in MFA
-      const { data, error } = await supabase.auth.mfa.enroll({
-        factorType: 'totp',
-        friendlyName: 'Finance App 2FA'
-      })
-
-      if (error) {
-        console.error('2FA enrollment error:', error)
-        alert(`Failed to enable 2FA: ${error.message}`)
-        return
-      }
-
-      if (data) {
-        console.log('2FA enrollment successful:', data)
-        setQrCode(data.totp.qr_code)
-        setCurrentFactorId(data.id)
-        setShow2FAModal(true)
-      }
-    } catch (err: any) {
-      console.error('2FA enrollment exception:', err)
-      alert(`Failed to enable 2FA: ${err.message || 'Please try again'}`)
-    }
-  }
-
-  const handleVerify2FA = async () => {
-    if (!verificationCode || verificationCode.length !== 6) {
-      alert('Please enter a valid 6-digit code')
-      return
-    }
-
-    if (!currentFactorId) {
-      alert('No 2FA factor found. Please try enabling 2FA again.')
-      return
-    }
-
-    try {
-      console.log('Verifying 2FA enrollment with factor ID:', currentFactorId)
-      
-      // First, create a challenge for the factor
-      const { data: challengeData, error: challengeError } = await supabase.auth.mfa.challenge({
-        factorId: currentFactorId
-      })
-
-      if (challengeError) {
-        console.error('2FA challenge error:', challengeError)
-        alert(`Failed to create challenge: ${challengeError.message}`)
-        return
-      }
-
-      console.log('Challenge created:', challengeData)
-
-      // Now verify the code against the challenge
-      const { data: verifyData, error: verifyError } = await supabase.auth.mfa.verify({
-        factorId: currentFactorId,
-        challengeId: challengeData.id,
-        code: verificationCode
-      })
-
-      if (verifyError) {
-        console.error('2FA verification error:', verifyError)
-        alert(`Verification failed: ${verifyError.message}. Make sure the code is current and try again.`)
-        return
-      }
-
-      console.log('2FA verification successful:', verifyData)
-
-      // Success!
-      setTwoFactorEnabled(true)
-      setShow2FAModal(false)
-      setVerificationCode('')
-      setQrCode('')
-      setCurrentFactorId('')
-      alert('2FA enabled successfully! You will need to enter a code on your next login.')
-    } catch (err: any) {
-      console.error('2FA verification exception:', err)
-      alert(`Verification failed: ${err.message || 'Please try again'}`)
+      setPasswordError('Failed to change password')
     }
   }
 
@@ -223,7 +164,6 @@ export default function ProfilePage() {
     if (!user) return
 
     try {
-      // Fetch all user data
       const [budgetsRes, potsRes, transactionsRes, billsRes] = await Promise.all([
         supabase.from('budgets').select('*').eq('user_id', user.id),
         supabase.from('pots').select('*').eq('user_id', user.id),
@@ -244,7 +184,6 @@ export default function ProfilePage() {
         exported_at: new Date().toISOString(),
       }
 
-      // Create downloadable JSON file
       const dataStr = JSON.stringify(exportData, null, 2)
       const dataBlob = new Blob([dataStr], { type: 'application/json' })
       const url = URL.createObjectURL(dataBlob)
@@ -256,32 +195,21 @@ export default function ProfilePage() {
       document.body.removeChild(link)
       URL.revokeObjectURL(url)
 
-      // Show success message
       setShowExportSuccess(true)
       setTimeout(() => setShowExportSuccess(false), 5000)
-
-      // In a real app, you would also send an email here
-      // For now, we'll just show the success message
     } catch (error) {
-      console.error('Export error:', error)
-      alert('Failed to export data. Please try again.')
+      alert('Failed to export data')
     }
   }
 
   const handleDeleteAccount = async () => {
     const confirmed = confirm(
-      'Are you sure you want to delete your account? This will permanently delete:\n\n' +
-      '• Your profile\n' +
-      '• All budgets\n' +
-      '• All transactions\n' +
-      '• All savings goals\n' +
-      '• All recurring bills\n\n' +
-      'This action CANNOT be undone!'
+      'Are you sure you want to delete your account? This will permanently delete all your data.\n\nThis action CANNOT be undone!'
     )
 
     if (!confirmed) return
 
-    const doubleConfirm = prompt('Type "DELETE" to confirm account deletion:')
+    const doubleConfirm = prompt('Type "DELETE" to confirm:')
     
     if (doubleConfirm !== 'DELETE') {
       alert('Account deletion cancelled')
@@ -291,35 +219,29 @@ export default function ProfilePage() {
     try {
       if (!user) return
 
-      // Delete all user data (CASCADE will handle related data)
-      // The database has ON DELETE CASCADE, so deleting profile will delete everything
-      const { error: deleteError } = await supabase
+      const { error } = await supabase
         .from('profiles')
         .delete()
         .eq('id', user.id)
 
-      if (deleteError) {
-        console.error('Error deleting profile:', deleteError)
-        alert(`Failed to delete account: ${deleteError.message}`)
+      if (error) {
+        alert(`Failed to delete account: ${error.message}`)
         return
       }
 
-      // Delete the auth user
-      const { error: authError } = await supabase.auth.admin.deleteUser(user.id)
-      
-      // Even if auth deletion fails, sign out and redirect
       await supabase.auth.signOut()
-      alert('Your account has been deleted successfully')
+      alert('Account deleted successfully')
       router.push('/')
     } catch (error) {
-      console.error('Delete account error:', error)
-      alert('Failed to delete account. Please contact support.')
+      alert('Failed to delete account')
     }
   }
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut()
-    router.push('/auth/login')
+  const handleSignOutDevice = async (sessionId: number) => {
+    if (sessionId === 1) {
+      await supabase.auth.signOut()
+      router.push('/auth/login')
+    }
   }
 
   if (loading) {
@@ -330,15 +252,10 @@ export default function ProfilePage() {
     <div className="max-w-6xl mx-auto px-6 py-8">
       {/* Profile Header */}
       <Card className="text-center mb-8">
-        <div className="relative inline-block mb-4">
-          <div className="w-32 h-32 bg-gradient-to-br from-primary to-accent-cyan rounded-full flex items-center justify-center mx-auto">
-            <span className="text-5xl font-bold text-white">
-              {profile?.name?.charAt(0).toUpperCase()}
-            </span>
-          </div>
-          <button className="absolute bottom-0 right-0 w-10 h-10 bg-primary rounded-full flex items-center justify-center text-white hover:bg-primary-dark transition-colors">
-            <Edit className="w-5 h-5" />
-          </button>
+        <div className="w-32 h-32 bg-gradient-to-br from-primary to-accent-cyan rounded-full flex items-center justify-center mx-auto mb-4">
+          <span className="text-5xl font-bold text-white">
+            {profile?.name?.charAt(0).toUpperCase()}
+          </span>
         </div>
         <h1 className="text-3xl font-bold text-grey-900 mb-2">{profile?.name}</h1>
         <p className="text-grey-500 mb-1">{user?.email}</p>
@@ -365,10 +282,11 @@ export default function ProfilePage() {
           ) : (
             <button
               onClick={handleSaveProfile}
+              disabled={saving}
               className="btn-primary flex items-center gap-2"
             >
               <Check className="w-4 h-4" />
-              Save Changes
+              {saving ? 'Saving...' : 'Save Changes'}
             </button>
           )}
         </div>
@@ -388,24 +306,6 @@ export default function ProfilePage() {
             ) : (
               <div className="p-3 bg-beige-100 rounded-lg text-grey-900">
                 {profile?.name}
-              </div>
-            )}
-          </div>
-
-          <div>
-            <label className="block text-sm font-semibold text-grey-900 mb-2">
-              Username
-            </label>
-            {isEditing ? (
-              <input
-                type="text"
-                value={editForm.username}
-                onChange={(e) => setEditForm({ ...editForm, username: e.target.value })}
-                className="input"
-              />
-            ) : (
-              <div className="p-3 bg-beige-100 rounded-lg text-grey-500">
-                {editForm.username}
               </div>
             )}
           </div>
@@ -527,7 +427,16 @@ export default function ProfilePage() {
             </label>
           </div>
 
-          <button className="btn-primary w-full md:w-auto flex items-center justify-center gap-2">
+          {settingsSaved && (
+            <div className="p-3 bg-primary/10 border border-primary rounded-lg text-primary text-sm">
+              Settings saved successfully!
+            </div>
+          )}
+
+          <button 
+            onClick={handleSaveSettings}
+            className="btn-primary w-full md:w-auto flex items-center justify-center gap-2"
+          >
             <Check className="w-5 h-5" />
             Save Settings
           </button>
@@ -560,34 +469,16 @@ export default function ProfilePage() {
           <div className="p-4 bg-beige-100 rounded-lg">
             <div className="flex items-start justify-between">
               <div className="flex items-start gap-3">
-                <Shield className="w-5 h-5 text-grey-500 mt-1" />
+                <Lock className="w-5 h-5 text-grey-500 mt-1" />
                 <div>
-                  <p className="font-semibold text-grey-900">Two-Factor Authentication</p>
-                  <p className="text-sm text-grey-500">Add an extra layer of security to your account</p>
-                  <span className="inline-block mt-1 px-2 py-1 bg-grey-300 text-grey-700 text-xs rounded">
-                    Coming Soon
-                  </span>
+                  <p className="font-semibold text-grey-900">Connected Devices</p>
+                  <p className="text-sm text-grey-500">View and manage devices with access to your account</p>
                 </div>
               </div>
               <button 
-                disabled
-                className="btn-secondary text-sm opacity-50 cursor-not-allowed"
+                onClick={() => setShowDevicesModal(true)}
+                className="btn-secondary text-sm"
               >
-                Coming Soon
-              </button>
-            </div>
-          </div>
-
-          <div className="p-4 bg-beige-100 rounded-lg">
-            <div className="flex items-start justify-between">
-              <div className="flex items-start gap-3">
-                <Smartphone className="w-5 h-5 text-grey-500 mt-1" />
-                <div>
-                  <p className="font-semibold text-grey-900">Connected Devices</p>
-                  <p className="text-sm text-grey-500">Manage devices that have access to your account</p>
-                </div>
-              </div>
-              <button className="btn-secondary text-sm">
                 Manage Devices
               </button>
             </div>
@@ -617,14 +508,8 @@ export default function ProfilePage() {
               </button>
             </div>
             {showExportSuccess && (
-              <div className="mt-3 p-3 bg-primary/10 border border-primary rounded-lg flex items-start gap-2">
-                <svg className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <div>
-                  <p className="text-sm font-semibold text-primary">Data export initiated. You will receive an email shortly.</p>
-                  <p className="text-xs text-grey-600 mt-1">Your data has also been downloaded to your device.</p>
-                </div>
+              <div className="mt-3 p-3 bg-primary/10 border border-primary rounded-lg text-primary text-sm">
+                Data exported successfully! Check your downloads.
               </div>
             )}
           </div>
@@ -636,7 +521,7 @@ export default function ProfilePage() {
                 <div>
                   <p className="font-semibold text-grey-900">Delete Account</p>
                   <p className="text-sm text-grey-500">
-                    Permanently delete your account and all associated data. This action cannot be undone.
+                    Permanently delete your account and all data
                   </p>
                 </div>
               </div>
@@ -663,7 +548,7 @@ export default function ProfilePage() {
                   setPasswordError('')
                   setPasswordSuccess(false)
                 }}
-                className="p-2 hover:bg-grey-100 rounded-lg transition-colors"
+                className="p-2 hover:bg-grey-100 rounded-lg"
               >
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -686,20 +571,6 @@ export default function ProfilePage() {
 
               <div>
                 <label className="block text-sm font-semibold text-grey-900 mb-2">
-                  Current Password
-                </label>
-                <input
-                  type="password"
-                  value={passwordForm.currentPassword}
-                  onChange={(e) => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })}
-                  className="input"
-                  placeholder="Enter current password"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-grey-900 mb-2">
                   New Password
                 </label>
                 <input
@@ -711,7 +582,6 @@ export default function ProfilePage() {
                   required
                   minLength={6}
                 />
-                <p className="text-xs text-grey-500 mt-1">Must be at least 6 characters</p>
               </div>
 
               <div>
@@ -732,11 +602,7 @@ export default function ProfilePage() {
               <div className="flex gap-3 pt-4">
                 <button
                   type="button"
-                  onClick={() => {
-                    setShowPasswordModal(false)
-                    setPasswordError('')
-                    setPasswordSuccess(false)
-                  }}
+                  onClick={() => setShowPasswordModal(false)}
                   className="btn-secondary flex-1"
                 >
                   Cancel
@@ -750,18 +616,15 @@ export default function ProfilePage() {
         </div>
       )}
 
-      {/* 2FA Setup Modal */}
-      {show2FAModal && (
+      {/* Manage Devices Modal */}
+      {showDevicesModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl p-6 max-w-md w-full">
+          <div className="bg-white rounded-xl p-6 max-w-2xl w-full">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-2xl font-bold text-grey-900">Enable 2FA</h3>
+              <h3 className="text-2xl font-bold text-grey-900">Connected Devices</h3>
               <button
-                onClick={() => {
-                  setShow2FAModal(false)
-                  setVerificationCode('')
-                }}
-                className="p-2 hover:bg-grey-100 rounded-lg transition-colors"
+                onClick={() => setShowDevicesModal(false)}
+                className="p-2 hover:bg-grey-100 rounded-lg"
               >
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -770,52 +633,30 @@ export default function ProfilePage() {
             </div>
 
             <div className="space-y-4">
-              <div className="text-center">
-                <p className="text-sm text-grey-600 mb-4">
-                  Scan this QR code with your authenticator app (Google Authenticator, Authy, etc.)
-                </p>
-                {qrCode && (
-                  <div className="bg-white p-4 rounded-lg border-2 border-grey-200 inline-block">
-                    <img src={qrCode} alt="2FA QR Code" className="w-48 h-48" />
+              {sessions.map((session) => (
+                <div key={session.id} className="p-4 bg-beige-100 rounded-lg">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className="font-semibold text-grey-900">{session.device}</p>
+                      <p className="text-sm text-grey-500">{session.location}</p>
+                      <p className="text-xs text-grey-400 mt-1">
+                        Last active: {new Date(session.lastActive).toLocaleString()}
+                      </p>
+                      {session.current && (
+                        <span className="inline-block mt-2 px-2 py-1 bg-primary/10 text-primary text-xs rounded">
+                          Current Session
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => handleSignOutDevice(session.id)}
+                      className="btn-secondary text-sm"
+                    >
+                      Sign Out
+                    </button>
                   </div>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-grey-900 mb-2">
-                  Verification Code
-                </label>
-                <input
-                  type="text"
-                  value={verificationCode}
-                  onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                  className="input text-center text-2xl tracking-widest"
-                  placeholder="000000"
-                  maxLength={6}
-                />
-                <p className="text-xs text-grey-500 mt-1 text-center">
-                  Enter the 6-digit code from your authenticator app
-                </p>
-              </div>
-
-              <div className="flex gap-3 pt-4">
-                <button
-                  onClick={() => {
-                    setShow2FAModal(false)
-                    setVerificationCode('')
-                  }}
-                  className="btn-secondary flex-1"
-                >
-                  Cancel
-                </button>
-                <button 
-                  onClick={handleVerify2FA}
-                  className="btn-primary flex-1"
-                  disabled={verificationCode.length !== 6}
-                >
-                  Verify & Enable
-                </button>
-              </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
