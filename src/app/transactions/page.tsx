@@ -17,6 +17,8 @@ export default function TransactionsPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [filterType, setFilterType] = useState('all')
   const [filterCategory, setFilterCategory] = useState('all')
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [formData, setFormData] = useState({
     name: '',
@@ -41,7 +43,7 @@ export default function TransactionsPage() {
 
   useEffect(() => {
     applyFilters()
-  }, [transactions, searchTerm, filterType, filterCategory])
+  }, [transactions, searchTerm, filterType, filterCategory, startDate, endDate])
 
   const fetchTransactions = async () => {
     try {
@@ -149,6 +151,15 @@ export default function TransactionsPage() {
       filtered = filtered.filter(t => t.category === filterCategory)
     }
 
+    // Date range filter
+    if (startDate) {
+      filtered = filtered.filter(t => new Date(t.date) >= new Date(startDate))
+    }
+    
+    if (endDate) {
+      filtered = filtered.filter(t => new Date(t.date) <= new Date(endDate))
+    }
+
     setFilteredTransactions(filtered)
     setCurrentPage(1)
   }
@@ -215,29 +226,44 @@ export default function TransactionsPage() {
       {/* Filters */}
       <Card className="mb-6">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="relative">
-            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-grey-500" />
+          <div>
+            <label className="block text-xs text-grey-500 mb-1">From Date</label>
             <input
-              type="text"
-              placeholder="Select Date Range"
-              className="input pl-10"
-              readOnly
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="input"
+            />
+          </div>
+          
+          <div>
+            <label className="block text-xs text-grey-500 mb-1">To Date</label>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="input"
             />
           </div>
 
-          <select
-            value={filterType}
-            onChange={(e) => setFilterType(e.target.value)}
-            className="input"
-          >
-            <option value="all">All Types</option>
-            <option value="income">Income</option>
-            <option value="expense">Expense</option>
-          </select>
+          <div>
+            <label className="block text-xs text-grey-500 mb-1">Type</label>
+            <select
+              value={filterType}
+              onChange={(e) => setFilterType(e.target.value)}
+              className="input"
+            >
+              <option value="all">All Types</option>
+              <option value="income">Income</option>
+              <option value="expense">Expense</option>
+            </select>
+          </div>
 
-          <select
-            value={filterCategory}
-            onChange={(e) => setFilterCategory(e.target.value)}
+          <div>
+            <label className="block text-xs text-grey-500 mb-1">Category</label>
+            <select
+              value={filterCategory}
+              onChange={(e) => setFilterCategory(e.target.value)}
             className="input"
           >
             <option value="all">All Categories</option>

@@ -12,6 +12,7 @@ const navItems = [
   { href: '/budgets', label: 'Budgets', icon: PieChart },
   { href: '/pots', label: 'Savings', icon: Wallet },
   { href: '/transactions', label: 'Transactions', icon: ArrowLeftRight },
+  { href: '/recurring-bills', label: 'Bills', icon: ArrowLeftRight },
   { href: '/profile', label: 'Profile', icon: User },
 ]
 
