@@ -19,11 +19,8 @@ export default function DashboardPage() {
 
   useEffect(() => {
     checkUser()
-    // Check if user has seen welcome popup
-    const hasSeenWelcome = localStorage.getItem('hasSeenWelcome')
-    if (!hasSeenWelcome) {
-      setShowWelcome(true)
-    }
+    // Show welcome popup on every page load
+    setShowWelcome(true)
   }, [])
 
   const checkUser = async () => {
@@ -366,10 +363,7 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-3xl font-bold text-grey-900">Welcome to Finance Manager! 👋</h2>
               <button
-                onClick={() => {
-                  setShowWelcome(false)
-                  localStorage.setItem('hasSeenWelcome', 'true')
-                }}
+                onClick={() => setShowWelcome(false)}
                 className="p-2 hover:bg-grey-100 rounded-lg transition-colors"
               >
                 <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -447,10 +441,7 @@ export default function DashboardPage() {
             </div>
 
             <button
-              onClick={() => {
-                setShowWelcome(false)
-                localStorage.setItem('hasSeenWelcome', 'true')
-              }}
+              onClick={() => setShowWelcome(false)}
               className="btn-primary w-full text-lg py-3"
             >
               Got It! Let's Get Started 🎉
