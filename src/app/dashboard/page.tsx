@@ -7,6 +7,8 @@ import { formatCurrency, calculatePercentageChange, filterTransactionsByMonth } 
 import { Transaction, Budget, Pot } from '@/types'
 import { TrendingUp, TrendingDown, Plus, ArrowRight } from 'lucide-react'
 import Link from 'next/link'
+import SpendingPieChart from '@/components/SpendingPieChart'
+import IncomeExpenseChart from '@/components/IncomeExpenseChart'
 
 export default function DashboardPage() {
   const [user, setUser] = useState<any>(null)
@@ -14,6 +16,7 @@ export default function DashboardPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [budgets, setBudgets] = useState<Budget[]>([])
   const [pots, setPots] = useState<Pot[]>([])
+  const [bills, setBills] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [showWelcome, setShowWelcome] = useState(false)
 
@@ -70,16 +73,32 @@ export default function DashboardPage() {
   }
 
   const fetchData = async (userId: string) => {
-    const [transactionsRes, budgetsRes, potsRes] = await Promise.all([
-      supabase.from('transactions').select('*').eq('user_id', userId).order('date', { ascending: false }).limit(5),
+    const [transactionsRes, budgetsRes, potsRes, billsRes] = await Promise.all([
+      supabase.from('transactions').select('*').eq('user_id', userId).order('date', { ascending: false }),
       supabase.from('budgets').select('*').eq('user_id', userId),
       supabase.from('pots').select('*').eq('user_id', userId),
+      supabase.from('recurring_bills').select('*').eq('user_id', userId),
     ])
 
     setTransactions(transactionsRes.data || [])
     setBudgets(budgetsRes.data || [])
     setPots(potsRes.data || [])
+    
+    // Add status to bills
+    const billsWithStatus = (billsRes.data || []).map(bill => ({
+      ...bill,
+      status: getBillStatus(bill.due_date)
+    }))
+    setBills(billsWithStatus)
+    
     setLoading(false)
+  }
+
+  const getBillStatus = (dueDate: number): 'paid' | 'due' | 'upcoming' => {
+    const today = new Date().getDate()
+    if (today > dueDate) return 'paid'
+    if (today === dueDate) return 'due'
+    return 'upcoming'
   }
 
   // Current month calculations
@@ -145,6 +164,126 @@ export default function DashboardPage() {
             <p className="text-grey-500 text-sm">{currentTime}</p>
           </div>
         </div>
+
+        {/* Alerts Section */}
+        {user && (
+          <>
+            {(() => {
+              const overBudgetCategories = budgets.filter(b => {
+                const spent = currentMonthTransactions
+                  .filter(t => t.category === b.category && t.amount < 0)
+                  .reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0)
+                return spent > Number(b.maximum)
+              })
+
+              const dueBills = bills.filter(b => b.status === 'due')
+              
+              const nearTargetGoals = pots.filter(p => {
+                const progress = (Number(p.total) / Number(p.target)) * 100
+                return progress >= 90 && progress < 100
+              })
+
+              const hasAlerts = overBudgetCategories.length > 0 || dueBills.length > 0 || nearTargetGoals.length > 0
+
+              if (!hasAlerts) return null
+
+              return (
+                <div className="mb-6 space-y-3">
+                  <h2 className="text-xl font-bold text-grey-900 flex items-center gap-2">
+                    <svg className="w-6 h-6 text-accent-red" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    Alerts & Notifications
+                  </h2>
+
+                  {overBudgetCategories.length > 0 && (
+                    <div className="bg-red-50 border-l-4 border-accent-red rounded-lg p-4">
+                      <div className="flex items-start gap-3">
+                        <div className="w-8 h-8 bg-accent-red rounded-full flex items-center justify-center flex-shrink-0">
+                          <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        </div>
+                        <div className="flex-1">
+                          <h3 className="font-bold text-accent-red mb-1">Over Budget Alert!</h3>
+                          <p className="text-sm text-red-800">
+                            You've exceeded your budget in {overBudgetCategories.length} {overBudgetCategories.length === 1 ? 'category' : 'categories'}:
+                          </p>
+                          <ul className="mt-2 space-y-1">
+                            {overBudgetCategories.map(b => {
+                              const spent = currentMonthTransactions
+                                .filter(t => t.category === b.category && t.amount < 0)
+                                .reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0)
+                              const over = spent - Number(b.maximum)
+                              return (
+                                <li key={b.id} className="text-sm text-red-800">
+                                  • <strong>{b.category}</strong>: Over by {formatCurrency(over)}
+                                </li>
+                              )
+                            })}
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {dueBills.length > 0 && (
+                    <div className="bg-yellow-50 border-l-4 border-accent-yellow rounded-lg p-4">
+                      <div className="flex items-start gap-3">
+                        <div className="w-8 h-8 bg-accent-yellow rounded-full flex items-center justify-center flex-shrink-0">
+                          <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                        </div>
+                        <div className="flex-1">
+                          <h3 className="font-bold text-accent-yellow mb-1">Bills Due Today!</h3>
+                          <p className="text-sm text-yellow-800">
+                            You have {dueBills.length} {dueBills.length === 1 ? 'bill' : 'bills'} due today:
+                          </p>
+                          <ul className="mt-2 space-y-1">
+                            {dueBills.map(bill => (
+                              <li key={bill.id} className="text-sm text-yellow-800">
+                                • <strong>{bill.name}</strong>: {formatCurrency(Number(bill.amount))}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {nearTargetGoals.length > 0 && (
+                    <div className="bg-green-50 border-l-4 border-primary rounded-lg p-4">
+                      <div className="flex items-start gap-3">
+                        <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center flex-shrink-0">
+                          <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        </div>
+                        <div className="flex-1">
+                          <h3 className="font-bold text-primary mb-1">Almost There! 🎉</h3>
+                          <p className="text-sm text-green-800">
+                            {nearTargetGoals.length} {nearTargetGoals.length === 1 ? 'goal is' : 'goals are'} within 10% of target:
+                          </p>
+                          <ul className="mt-2 space-y-1">
+                            {nearTargetGoals.map(pot => {
+                              const remaining = Number(pot.target) - Number(pot.total)
+                              return (
+                                <li key={pot.id} className="text-sm text-green-800">
+                                  • <strong>{pot.name}</strong>: Only {formatCurrency(remaining)} to go!
+                                </li>
+                              )
+                            })}
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
+          </>
+        )}
 
         {/* Info Banner */}
         <div className="bg-gradient-to-r from-primary/10 to-accent-cyan/10 rounded-xl p-4 mb-6 border border-primary/20">
@@ -245,6 +384,77 @@ export default function DashboardPage() {
                 <p className="font-semibold text-grey-900">View Reports</p>
               </Link>
             </div>
+          </div>
+        )}
+
+        {/* Charts Section */}
+        {user && transactions.length > 0 && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            {/* Spending by Category */}
+            <Card>
+              <h3 className="text-xl font-bold text-grey-900 mb-4">Spending by Category</h3>
+              <SpendingPieChart 
+                data={(() => {
+                  const expensesByCategory: { [key: string]: number } = {}
+                  currentMonthTransactions
+                    .filter(t => t.amount < 0)
+                    .forEach(t => {
+                      const category = t.category
+                      expensesByCategory[category] = (expensesByCategory[category] || 0) + Math.abs(Number(t.amount))
+                    })
+                  
+                  const total = Object.values(expensesByCategory).reduce((sum, val) => sum + val, 0)
+                  
+                  return Object.entries(expensesByCategory)
+                    .map(([category, amount]) => ({
+                      category,
+                      amount,
+                      percentage: (amount / total) * 100
+                    }))
+                    .sort((a, b) => b.amount - a.amount)
+                    .slice(0, 8) // Top 8 categories
+                })()}
+              />
+            </Card>
+
+            {/* Income vs Expense Trend */}
+            <Card>
+              <h3 className="text-xl font-bold text-grey-900 mb-4">Income vs Expense (Last 6 Months)</h3>
+              <IncomeExpenseChart 
+                data={(() => {
+                  const monthlyData: { [key: string]: { income: number; expense: number } } = {}
+                  
+                  // Get last 6 months
+                  for (let i = 5; i >= 0; i--) {
+                    const date = new Date()
+                    date.setMonth(date.getMonth() - i)
+                    const monthKey = date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+                    monthlyData[monthKey] = { income: 0, expense: 0 }
+                  }
+                  
+                  // Aggregate transactions by month
+                  transactions.forEach(t => {
+                    const transactionDate = new Date(t.date)
+                    const monthKey = transactionDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+                    
+                    if (monthlyData[monthKey]) {
+                      if (Number(t.amount) > 0) {
+                        monthlyData[monthKey].income += Number(t.amount)
+                      } else {
+                        monthlyData[monthKey].expense += Math.abs(Number(t.amount))
+                      }
+                    }
+                  })
+                  
+                  return Object.entries(monthlyData).map(([month, data]) => ({
+                    month,
+                    income: data.income,
+                    expense: data.expense,
+                    net: data.income - data.expense
+                  }))
+                })()}
+              />
+            </Card>
           </div>
         )}
 
@@ -380,7 +590,7 @@ export default function DashboardPage() {
               </div>
             ) : (
               <div className="space-y-3">
-                {transactions.map((transaction) => (
+                {transactions.slice(0, 5).map((transaction) => (
                   <div key={transaction.id} className="flex items-center justify-between py-3 border-b border-grey-100 last:border-0">
                     <div className="flex items-center gap-4">
                       <div className="w-12 h-12 rounded-full bg-beige-100 flex items-center justify-center">

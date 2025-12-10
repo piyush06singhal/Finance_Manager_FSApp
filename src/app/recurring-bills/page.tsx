@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import Card from '@/components/Card'
 import { formatCurrency } from '@/lib/utils'
 import { RecurringBill } from '@/types'
-import { Search, Plus, X, Calendar, DollarSign } from 'lucide-react'
+import { Search, Plus, X, Calendar, DollarSign, Trash2, Edit2 } from 'lucide-react'
 
 export default function RecurringBillsPage() {
   const [bills, setBills] = useState<RecurringBill[]>([])
@@ -14,6 +14,9 @@ export default function RecurringBillsPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [sortBy, setSortBy] = useState<'name' | 'amount' | 'due_date'>('due_date')
   const [showModal, setShowModal] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [billToDelete, setBillToDelete] = useState<RecurringBill | null>(null)
+  const [editingBill, setEditingBill] = useState<RecurringBill | null>(null)
   const [formData, setFormData] = useState({
     name: '',
     amount: '',
@@ -124,27 +127,82 @@ export default function RecurringBillsPage() {
     }
 
     try {
-      const { data, error } = await supabase.from('recurring_bills').insert({
-        user_id: user.id,
-        name: formData.name,
-        amount: parseFloat(formData.amount),
-        due_date: parseInt(formData.due_date),
-        status: 'upcoming',
-      }).select()
+      if (editingBill) {
+        // Update existing bill
+        const { error } = await supabase
+          .from('recurring_bills')
+          .update({
+            name: formData.name,
+            amount: parseFloat(formData.amount),
+            due_date: parseInt(formData.due_date),
+          })
+          .eq('id', editingBill.id)
 
-      if (error) {
-        console.error('Error creating bill:', error)
-        alert(`Failed to create bill: ${error.message}`)
-        return
+        if (error) {
+          console.error('Error updating bill:', error)
+          alert(`Failed to update bill: ${error.message}`)
+          return
+        }
+      } else {
+        // Insert new bill
+        const { error } = await supabase.from('recurring_bills').insert({
+          user_id: user.id,
+          name: formData.name,
+          amount: parseFloat(formData.amount),
+          due_date: parseInt(formData.due_date),
+          status: 'upcoming',
+        }).select()
+
+        if (error) {
+          console.error('Error creating bill:', error)
+          alert(`Failed to create bill: ${error.message}`)
+          return
+        }
       }
 
       setShowModal(false)
+      setEditingBill(null)
       setFormData({
         name: '',
         amount: '',
         due_date: '1',
       })
       
+      fetchBills()
+    } catch (err) {
+      console.error('Unexpected error:', err)
+      alert('An unexpected error occurred')
+    }
+  }
+
+  const handleEditBill = (bill: RecurringBill) => {
+    setEditingBill(bill)
+    setFormData({
+      name: bill.name,
+      amount: bill.amount.toString(),
+      due_date: bill.due_date.toString(),
+    })
+    setShowModal(true)
+  }
+
+  const handleDeleteBill = async () => {
+    if (!billToDelete) return
+
+    try {
+      const { error } = await supabase
+        .from('recurring_bills')
+        .delete()
+        .eq('id', billToDelete.id)
+
+      if (error) {
+        console.error('Error deleting bill:', error)
+        alert(`Failed to delete bill: ${error.message}`)
+        return
+      }
+
+      // Success
+      setShowDeleteConfirm(false)
+      setBillToDelete(null)
       fetchBills()
     } catch (err) {
       console.error('Unexpected error:', err)
@@ -295,7 +353,7 @@ export default function RecurringBillsPage() {
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-3">
                   <span
                     className={`px-3 py-1 rounded-full text-xs font-semibold ${
                       bill.status === 'paid'
@@ -316,6 +374,25 @@ export default function RecurringBillsPage() {
                     </button>
                   )}
                   <p className="font-bold text-lg w-28 text-right">{formatCurrency(Number(bill.amount))}</p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleEditBill(bill)}
+                      className="p-2 hover:bg-blue-50 rounded-lg transition-colors"
+                      title="Edit bill"
+                    >
+                      <Edit2 className="w-4 h-4 text-primary" />
+                    </button>
+                    <button
+                      onClick={() => {
+                        setBillToDelete(bill)
+                        setShowDeleteConfirm(true)
+                      }}
+                      className="p-2 hover:bg-red-50 rounded-lg transition-colors"
+                      title="Delete bill"
+                    >
+                      <Trash2 className="w-4 h-4 text-accent-red" />
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -323,17 +400,90 @@ export default function RecurringBillsPage() {
         )}
       </Card>
 
-      {/* Add Bill Modal */}
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && billToDelete && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-2xl font-bold text-grey-900">Delete Bill?</h3>
+              <button
+                onClick={() => {
+                  setShowDeleteConfirm(false)
+                  setBillToDelete(null)
+                }}
+                className="p-2 hover:bg-grey-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="mb-6">
+              <p className="text-grey-700 mb-4">
+                Are you sure you want to delete <strong>{billToDelete.name}</strong>?
+              </p>
+              <div className="bg-grey-50 border border-grey-200 rounded-lg p-4 mb-4">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-sm text-grey-600">Amount:</span>
+                  <span className="font-bold">{formatCurrency(Number(billToDelete.amount))}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-grey-600">Due Date:</span>
+                  <span className="font-semibold">
+                    {billToDelete.due_date}{billToDelete.due_date === 1 ? 'st' : billToDelete.due_date === 2 ? 'nd' : billToDelete.due_date === 3 ? 'rd' : 'th'} of each month
+                  </span>
+                </div>
+              </div>
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <p className="text-sm text-red-800">
+                  ⚠️ This action cannot be undone. You'll lose tracking for this recurring bill.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowDeleteConfirm(false)
+                  setBillToDelete(null)
+                }}
+                className="btn-secondary flex-1"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteBill}
+                className="flex-1 px-5 py-3 rounded-lg font-semibold bg-accent-red text-white hover:bg-red-700 transition-colors"
+              >
+                Delete Bill
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add/Edit Bill Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl p-6 max-w-md w-full">
             <div className="flex items-center justify-between mb-6">
               <div>
-                <h3 className="text-2xl font-bold text-grey-900">Add Recurring Bill</h3>
-                <p className="text-sm text-grey-500">Add a monthly bill or subscription</p>
+                <h3 className="text-2xl font-bold text-grey-900">
+                  {editingBill ? 'Edit Recurring Bill' : 'Add Recurring Bill'}
+                </h3>
+                <p className="text-sm text-grey-500">
+                  {editingBill ? 'Update bill details' : 'Add a monthly bill or subscription'}
+                </p>
               </div>
               <button
-                onClick={() => setShowModal(false)}
+                onClick={() => {
+                  setShowModal(false)
+                  setEditingBill(null)
+                  setFormData({
+                    name: '',
+                    amount: '',
+                    due_date: '1',
+                  })
+                }}
                 className="p-2 hover:bg-grey-100 rounded-lg transition-colors"
               >
                 <X className="w-5 h-5" />
@@ -392,13 +542,21 @@ export default function RecurringBillsPage() {
               <div className="flex gap-3 pt-4">
                 <button
                   type="button"
-                  onClick={() => setShowModal(false)}
+                  onClick={() => {
+                    setShowModal(false)
+                    setEditingBill(null)
+                    setFormData({
+                      name: '',
+                      amount: '',
+                      due_date: '1',
+                    })
+                  }}
                   className="btn-secondary flex-1"
                 >
                   Cancel
                 </button>
                 <button type="submit" className="btn-primary flex-1">
-                  Add Bill
+                  {editingBill ? 'Update Bill' : 'Add Bill'}
                 </button>
               </div>
             </form>

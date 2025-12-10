@@ -5,7 +5,10 @@ import { supabase } from '@/lib/supabase'
 import Card from '@/components/Card'
 import { formatCurrency, formatDate, calculatePercentageChange, filterTransactionsByMonth } from '@/lib/utils'
 import { Transaction } from '@/types'
-import { Search, ChevronLeft, ChevronRight, Plus, X, TrendingUp, TrendingDown, ArrowUpDown, Calendar } from 'lucide-react'
+import { Search, ChevronLeft, ChevronRight, Plus, X, TrendingUp, TrendingDown, ArrowUpDown, Calendar, Trash2, Edit2 } from 'lucide-react'
+import CategorySelect from '@/components/CategorySelect'
+import { normalizeCategoryName } from '@/lib/categories'
+import DateRangeFilter, { getDateRangePreset, DateRangePreset } from '@/components/DateRangeFilter'
 
 const ITEMS_PER_PAGE = 10
 
@@ -18,6 +21,13 @@ export default function TransactionsPage() {
   const [filterType, setFilterType] = useState('all')
   const [filterCategory, setFilterCategory] = useState('all')
   const [showModal, setShowModal] = useState(false)
+  const [dateRange, setDateRange] = useState(() => {
+    const preset = getDateRangePreset('this-month')
+    return { ...preset, preset: 'this-month' as DateRangePreset }
+  })
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [transactionToDelete, setTransactionToDelete] = useState<Transaction | null>(null)
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
   const [formData, setFormData] = useState({
     name: '',
     amount: '',
@@ -41,7 +51,7 @@ export default function TransactionsPage() {
 
   useEffect(() => {
     applyFilters()
-  }, [transactions, searchTerm, filterType, filterCategory])
+  }, [transactions, searchTerm, filterType, filterCategory, dateRange])
 
   const fetchTransactions = async () => {
     try {
@@ -93,24 +103,47 @@ export default function TransactionsPage() {
         ? -Math.abs(parseFloat(formData.amount))
         : Math.abs(parseFloat(formData.amount))
 
-      // Insert into database
-      const { data, error } = await supabase.from('transactions').insert({
-        user_id: user.id,
-        name: formData.name,
-        amount: amount,
-        date: formData.date,
-        category: formData.category,
-        recurring: false,
-      }).select()
+      // Normalize category name for consistency
+      const normalizedCategory = normalizeCategoryName(formData.category)
 
-      if (error) {
-        console.error('Error creating transaction:', error)
-        alert(`Failed to create transaction: ${error.message}`)
-        return
+      if (editingTransaction) {
+        // Update existing transaction
+        const { error } = await supabase
+          .from('transactions')
+          .update({
+            name: formData.name,
+            amount: amount,
+            date: formData.date,
+            category: normalizedCategory,
+          })
+          .eq('id', editingTransaction.id)
+
+        if (error) {
+          console.error('Error updating transaction:', error)
+          alert(`Failed to update transaction: ${error.message}`)
+          return
+        }
+      } else {
+        // Insert new transaction
+        const { error } = await supabase.from('transactions').insert({
+          user_id: user.id,
+          name: formData.name,
+          amount: amount,
+          date: formData.date,
+          category: normalizedCategory,
+          recurring: false,
+        }).select()
+
+        if (error) {
+          console.error('Error creating transaction:', error)
+          alert(`Failed to create transaction: ${error.message}`)
+          return
+        }
       }
 
       // Success - close modal and reset form
       setShowModal(false)
+      setEditingTransaction(null)
       setFormData({
         name: '',
         amount: '',
@@ -127,8 +160,51 @@ export default function TransactionsPage() {
     }
   }
 
+  const handleEditTransaction = (transaction: Transaction) => {
+    setEditingTransaction(transaction)
+    setFormData({
+      name: transaction.name,
+      amount: Math.abs(Number(transaction.amount)).toString(),
+      type: Number(transaction.amount) < 0 ? 'expense' : 'income',
+      date: transaction.date,
+      category: transaction.category,
+    })
+    setShowModal(true)
+  }
+
+  const handleDeleteTransaction = async () => {
+    if (!transactionToDelete) return
+
+    try {
+      const { error } = await supabase
+        .from('transactions')
+        .delete()
+        .eq('id', transactionToDelete.id)
+
+      if (error) {
+        console.error('Error deleting transaction:', error)
+        alert(`Failed to delete transaction: ${error.message}`)
+        return
+      }
+
+      // Success
+      setShowDeleteConfirm(false)
+      setTransactionToDelete(null)
+      fetchTransactions()
+    } catch (err) {
+      console.error('Unexpected error:', err)
+      alert('An unexpected error occurred')
+    }
+  }
+
   const applyFilters = () => {
     let filtered = [...transactions]
+
+    // Filter by date range
+    filtered = filtered.filter(t => {
+      const transactionDate = new Date(t.date)
+      return transactionDate >= dateRange.start && transactionDate <= dateRange.end
+    })
 
     if (searchTerm) {
       filtered = filtered.filter(t =>
@@ -153,27 +229,35 @@ export default function TransactionsPage() {
     setCurrentPage(1)
   }
 
-  // Current month calculations
-  const currentMonthTransactions = filterTransactionsByMonth(transactions, 0)
-  const previousMonthTransactions = filterTransactionsByMonth(transactions, 1)
-
-  const totalIncome = currentMonthTransactions
+  // Calculate totals based on filtered transactions (date range)
+  const totalIncome = filteredTransactions
     .filter(t => t.amount > 0)
     .reduce((sum, t) => sum + Number(t.amount), 0)
 
-  const totalExpense = currentMonthTransactions
-    .filter(t => t.amount < 0)
-    .reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0)
-
-  const previousIncome = previousMonthTransactions
-    .filter(t => t.amount > 0)
-    .reduce((sum, t) => sum + Number(t.amount), 0)
-
-  const previousExpense = previousMonthTransactions
+  const totalExpense = filteredTransactions
     .filter(t => t.amount < 0)
     .reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0)
 
   const netBalance = totalIncome - totalExpense
+
+  // For comparison, get previous period data
+  const periodLength = dateRange.end.getTime() - dateRange.start.getTime()
+  const previousStart = new Date(dateRange.start.getTime() - periodLength)
+  const previousEnd = new Date(dateRange.start.getTime() - 1)
+
+  const previousPeriodTransactions = transactions.filter(t => {
+    const transactionDate = new Date(t.date)
+    return transactionDate >= previousStart && transactionDate <= previousEnd
+  })
+
+  const previousIncome = previousPeriodTransactions
+    .filter(t => t.amount > 0)
+    .reduce((sum, t) => sum + Number(t.amount), 0)
+
+  const previousExpense = previousPeriodTransactions
+    .filter(t => t.amount < 0)
+    .reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0)
+
   const incomeChange = calculatePercentageChange(totalIncome, previousIncome)
   const expenseChange = calculatePercentageChange(totalExpense, previousExpense)
   const balanceChange = calculatePercentageChange(netBalance, previousIncome - previousExpense)
@@ -202,7 +286,7 @@ export default function TransactionsPage() {
           </div>
           <p className="text-4xl font-bold text-grey-900 mb-1">{formatCurrency(totalIncome)}</p>
           <p className={`text-sm ${parseFloat(incomeChange) >= 0 ? 'text-primary' : 'text-accent-red'}`}>
-            {incomeChange}% vs last month
+            {incomeChange}% vs previous period
           </p>
         </Card>
 
@@ -215,7 +299,7 @@ export default function TransactionsPage() {
           </div>
           <p className="text-4xl font-bold text-grey-900 mb-1">{formatCurrency(totalExpense)}</p>
           <p className={`text-sm ${parseFloat(expenseChange) >= 0 ? 'text-accent-red' : 'text-primary'}`}>
-            {expenseChange}% vs last month
+            {expenseChange}% vs previous period
           </p>
         </Card>
 
@@ -228,23 +312,20 @@ export default function TransactionsPage() {
           </div>
           <p className="text-4xl font-bold text-grey-900 mb-1">{formatCurrency(netBalance)}</p>
           <p className={`text-sm ${parseFloat(balanceChange) >= 0 ? 'text-primary' : 'text-accent-red'}`}>
-            {balanceChange}% vs last month
+            {balanceChange}% vs previous period
           </p>
         </Card>
       </div>
 
+      {/* Date Range Filter */}
+      <Card className="mb-6">
+        <h3 className="text-lg font-semibold text-grey-900 mb-4">Date Range</h3>
+        <DateRangeFilter value={dateRange} onChange={setDateRange} />
+      </Card>
+
       {/* Filters */}
       <Card className="mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="relative">
-            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-grey-500" />
-            <input
-              type="text"
-              placeholder="Select Date Range"
-              className="input pl-10"
-              readOnly
-            />
-          </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
           <select
             value={filterType}
@@ -269,7 +350,7 @@ export default function TransactionsPage() {
 
           <button
             onClick={() => setShowModal(true)}
-            className="btn-primary flex items-center justify-center gap-2"
+            className="btn-primary flex items-center justify-center gap-2 whitespace-nowrap"
           >
             <Plus className="w-5 h-5" />
             Add Transaction
@@ -325,6 +406,7 @@ export default function TransactionsPage() {
                     <th className="text-left py-3 px-4 text-sm font-semibold text-grey-500">Category</th>
                     <th className="text-left py-3 px-4 text-sm font-semibold text-grey-500">Type</th>
                     <th className="text-right py-3 px-4 text-sm font-semibold text-grey-500">Amount</th>
+                    <th className="text-right py-3 px-4 text-sm font-semibold text-grey-500">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -370,6 +452,27 @@ export default function TransactionsPage() {
                           {transaction.amount > 0 ? '+' : ''}{formatCurrency(Number(transaction.amount))}
                         </span>
                       </td>
+                      <td className="py-4 px-4 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => handleEditTransaction(transaction)}
+                            className="p-2 hover:bg-blue-50 rounded-lg transition-colors"
+                            title="Edit transaction"
+                          >
+                            <Edit2 className="w-4 h-4 text-primary" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              setTransactionToDelete(transaction)
+                              setShowDeleteConfirm(true)
+                            }}
+                            className="p-2 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Delete transaction"
+                          >
+                            <Trash2 className="w-4 h-4 text-accent-red" />
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -403,17 +506,96 @@ export default function TransactionsPage() {
         )}
       </Card>
 
-      {/* Add Transaction Modal */}
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && transactionToDelete && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-2xl font-bold text-grey-900">Delete Transaction?</h3>
+              <button
+                onClick={() => {
+                  setShowDeleteConfirm(false)
+                  setTransactionToDelete(null)
+                }}
+                className="p-2 hover:bg-grey-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="mb-6">
+              <p className="text-grey-700 mb-4">
+                Are you sure you want to delete this transaction?
+              </p>
+              <div className="bg-grey-50 border border-grey-200 rounded-lg p-4 mb-4">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-sm text-grey-600">Description:</span>
+                  <span className="font-semibold">{transactionToDelete.name}</span>
+                </div>
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-sm text-grey-600">Amount:</span>
+                  <span className={`font-bold ${Number(transactionToDelete.amount) > 0 ? 'text-primary' : 'text-accent-red'}`}>
+                    {formatCurrency(Number(transactionToDelete.amount))}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-grey-600">Category:</span>
+                  <span className="font-semibold">{transactionToDelete.category}</span>
+                </div>
+              </div>
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <p className="text-sm text-red-800">
+                  ⚠️ This action cannot be undone. This will affect your balance and budget calculations.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowDeleteConfirm(false)
+                  setTransactionToDelete(null)
+                }}
+                className="btn-secondary flex-1"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteTransaction}
+                className="flex-1 px-5 py-3 rounded-lg font-semibold bg-accent-red text-white hover:bg-red-700 transition-colors"
+              >
+                Delete Transaction
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add/Edit Transaction Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl p-6 max-w-md w-full">
             <div className="flex items-center justify-between mb-6">
               <div>
-                <h3 className="text-2xl font-bold text-grey-900">Add Transaction</h3>
-                <p className="text-sm text-grey-500">Create a new transaction record</p>
+                <h3 className="text-2xl font-bold text-grey-900">
+                  {editingTransaction ? 'Edit Transaction' : 'Add Transaction'}
+                </h3>
+                <p className="text-sm text-grey-500">
+                  {editingTransaction ? 'Update transaction details' : 'Create a new transaction record'}
+                </p>
               </div>
               <button
-                onClick={() => setShowModal(false)}
+                onClick={() => {
+                  setShowModal(false)
+                  setEditingTransaction(null)
+                  setFormData({
+                    name: '',
+                    amount: '',
+                    type: 'expense',
+                    date: new Date().toISOString().split('T')[0],
+                    category: '',
+                  })
+                }}
                 className="p-2 hover:bg-grey-100 rounded-lg transition-colors"
               >
                 <X className="w-5 h-5" />
@@ -469,12 +651,11 @@ export default function TransactionsPage() {
                 <label className="block text-sm font-semibold text-grey-900 mb-2">
                   Category
                 </label>
-                <input
-                  type="text"
+                <CategorySelect
                   value={formData.category}
-                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                  placeholder="e.g., Food & Dining"
-                  className="input"
+                  onChange={(value) => setFormData({ ...formData, category: value })}
+                  type={formData.type as 'income' | 'expense'}
+                  placeholder="Select category"
                   required
                 />
               </div>
@@ -496,13 +677,23 @@ export default function TransactionsPage() {
               <div className="flex gap-3 pt-4">
                 <button
                   type="button"
-                  onClick={() => setShowModal(false)}
+                  onClick={() => {
+                    setShowModal(false)
+                    setEditingTransaction(null)
+                    setFormData({
+                      name: '',
+                      amount: '',
+                      type: 'expense',
+                      date: new Date().toISOString().split('T')[0],
+                      category: '',
+                    })
+                  }}
                   className="btn-secondary flex-1"
                 >
                   Cancel
                 </button>
                 <button type="submit" className="btn-primary flex-1">
-                  Add Transaction
+                  {editingTransaction ? 'Update Transaction' : 'Add Transaction'}
                 </button>
               </div>
             </form>

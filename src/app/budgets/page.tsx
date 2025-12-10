@@ -5,13 +5,18 @@ import { supabase } from '@/lib/supabase'
 import Card from '@/components/Card'
 import { formatCurrency, filterTransactionsByMonth } from '@/lib/utils'
 import { Budget, Transaction } from '@/types'
-import { Plus, X, PieChart, TrendingUp, DollarSign, Search } from 'lucide-react'
+import { Plus, X, PieChart, TrendingUp, DollarSign, Search, Trash2, Edit2 } from 'lucide-react'
+import CategorySelect from '@/components/CategorySelect'
+import { normalizeCategoryName } from '@/lib/categories'
 
 export default function BudgetsPage() {
   const [budgets, setBudgets] = useState<Budget[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [budgetToDelete, setBudgetToDelete] = useState<Budget | null>(null)
+  const [editingBudget, setEditingBudget] = useState<Budget | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [filterCategory, setFilterCategory] = useState('all')
   const [formData, setFormData] = useState({
@@ -71,22 +76,43 @@ export default function BudgetsPage() {
     }
 
     try {
-      // Insert into database
-      const { data, error } = await supabase.from('budgets').insert({
-        user_id: user.id,
-        category: formData.category,
-        maximum: parseFloat(formData.maximum),
-        theme: 'primary',
-      }).select()
+      // Normalize category name for consistency
+      const normalizedCategory = normalizeCategoryName(formData.category)
 
-      if (error) {
-        console.error('Error creating budget:', error)
-        alert(`Failed to create budget: ${error.message}`)
-        return
+      if (editingBudget) {
+        // Update existing budget
+        const { error } = await supabase
+          .from('budgets')
+          .update({
+            category: normalizedCategory,
+            maximum: parseFloat(formData.maximum),
+          })
+          .eq('id', editingBudget.id)
+
+        if (error) {
+          console.error('Error updating budget:', error)
+          alert(`Failed to update budget: ${error.message}`)
+          return
+        }
+      } else {
+        // Insert new budget
+        const { error } = await supabase.from('budgets').insert({
+          user_id: user.id,
+          category: normalizedCategory,
+          maximum: parseFloat(formData.maximum),
+          theme: 'primary',
+        }).select()
+
+        if (error) {
+          console.error('Error creating budget:', error)
+          alert(`Failed to create budget: ${error.message}`)
+          return
+        }
       }
 
       // Success - close modal and reset form
       setShowModal(false)
+      setEditingBudget(null)
       setFormData({
         category: '',
         maximum: '',
@@ -99,6 +125,42 @@ export default function BudgetsPage() {
     } catch (err) {
       console.error('Unexpected error:', err)
       alert('An unexpected error occurred. Please try again.')
+    }
+  }
+
+  const handleEditBudget = (budget: Budget) => {
+    setEditingBudget(budget)
+    setFormData({
+      category: budget.category,
+      maximum: budget.maximum.toString(),
+      startDate: new Date().toISOString().split('T')[0],
+      endDate: new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString().split('T')[0],
+    })
+    setShowModal(true)
+  }
+
+  const handleDeleteBudget = async () => {
+    if (!budgetToDelete) return
+
+    try {
+      const { error } = await supabase
+        .from('budgets')
+        .delete()
+        .eq('id', budgetToDelete.id)
+
+      if (error) {
+        console.error('Error deleting budget:', error)
+        alert(`Failed to delete budget: ${error.message}`)
+        return
+      }
+
+      // Success
+      setShowDeleteConfirm(false)
+      setBudgetToDelete(null)
+      fetchData()
+    } catch (err) {
+      console.error('Unexpected error:', err)
+      alert('An unexpected error occurred')
     }
   }
 
@@ -237,17 +299,36 @@ export default function BudgetsPage() {
             return (
               <Card key={budget.id} className={isOverBudget ? 'border-accent-red' : ''}>
                 <div className="flex items-start justify-between mb-4">
-                  <div>
+                  <div className="flex-1">
                     <h3 className="text-xl font-bold text-grey-900 mb-1">{budget.category}</h3>
                     <p className="text-sm text-grey-500">
                       {isOverBudget ? `Over budget by ${formatCurrency(Math.abs(remaining))}` : `${formatCurrency(remaining)} remaining`}
                     </p>
                   </div>
-                  {isOverBudget && (
-                    <span className="px-3 py-1 bg-accent-red/10 text-accent-red text-xs font-semibold rounded-full">
-                      Over Budget
-                    </span>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {isOverBudget && (
+                      <span className="px-3 py-1 bg-accent-red/10 text-accent-red text-xs font-semibold rounded-full">
+                        Over Budget
+                      </span>
+                    )}
+                    <button
+                      onClick={() => handleEditBudget(budget)}
+                      className="p-2 hover:bg-blue-50 rounded-lg transition-colors"
+                      title="Edit budget"
+                    >
+                      <Edit2 className="w-4 h-4 text-primary" />
+                    </button>
+                    <button
+                      onClick={() => {
+                        setBudgetToDelete(budget)
+                        setShowDeleteConfirm(true)
+                      }}
+                      className="p-2 hover:bg-red-50 rounded-lg transition-colors"
+                      title="Delete budget"
+                    >
+                      <Trash2 className="w-4 h-4 text-accent-red" />
+                    </button>
+                  </div>
                 </div>
 
                 <div className="mb-4">
@@ -291,14 +372,74 @@ export default function BudgetsPage() {
         </div>
       )}
 
-      {/* Create Budget Modal */}
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && budgetToDelete && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-2xl font-bold text-grey-900">Delete Budget?</h3>
+              <button
+                onClick={() => {
+                  setShowDeleteConfirm(false)
+                  setBudgetToDelete(null)
+                }}
+                className="p-2 hover:bg-grey-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="mb-6">
+              <p className="text-grey-700 mb-4">
+                Are you sure you want to delete the budget for <strong>{budgetToDelete.category}</strong>?
+              </p>
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <p className="text-sm text-red-800">
+                  ⚠️ This action cannot be undone. Your transactions will not be affected, but you'll lose budget tracking for this category.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowDeleteConfirm(false)
+                  setBudgetToDelete(null)
+                }}
+                className="btn-secondary flex-1"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteBudget}
+                className="flex-1 px-5 py-3 rounded-lg font-semibold bg-accent-red text-white hover:bg-red-700 transition-colors"
+              >
+                Delete Budget
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create/Edit Budget Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl p-6 max-w-md w-full">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-2xl font-bold text-grey-900">Create Budget</h3>
+              <h3 className="text-2xl font-bold text-grey-900">
+                {editingBudget ? 'Edit Budget' : 'Create Budget'}
+              </h3>
               <button
-                onClick={() => setShowModal(false)}
+                onClick={() => {
+                  setShowModal(false)
+                  setEditingBudget(null)
+                  setFormData({
+                    category: '',
+                    maximum: '',
+                    startDate: new Date().toISOString().split('T')[0],
+                    endDate: new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString().split('T')[0],
+                  })
+                }}
                 className="p-2 hover:bg-grey-100 rounded-lg transition-colors"
               >
                 <X className="w-5 h-5" />
@@ -308,21 +449,20 @@ export default function BudgetsPage() {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-sm font-semibold text-grey-900 mb-2">
-                  Budget Name
+                  Category
                 </label>
-                <input
-                  type="text"
+                <CategorySelect
                   value={formData.category}
-                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                  placeholder="e.g., Groceries"
-                  className="input"
+                  onChange={(value) => setFormData({ ...formData, category: value })}
+                  type="expense"
+                  placeholder="Select category"
                   required
                 />
               </div>
 
               <div>
                 <label className="block text-sm font-semibold text-grey-900 mb-2">
-                  Amount
+                  Monthly Budget Amount
                 </label>
                 <input
                   type="number"
@@ -333,20 +473,6 @@ export default function BudgetsPage() {
                   required
                   min="0"
                   step="0.01"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-grey-900 mb-2">
-                  Category
-                </label>
-                <input
-                  type="text"
-                  value={formData.category}
-                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                  placeholder="e.g., Food & Dining"
-                  className="input"
-                  required
                 />
               </div>
 
@@ -379,13 +505,22 @@ export default function BudgetsPage() {
               <div className="flex gap-3 pt-4">
                 <button
                   type="button"
-                  onClick={() => setShowModal(false)}
+                  onClick={() => {
+                    setShowModal(false)
+                    setEditingBudget(null)
+                    setFormData({
+                      category: '',
+                      maximum: '',
+                      startDate: new Date().toISOString().split('T')[0],
+                      endDate: new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString().split('T')[0],
+                    })
+                  }}
                   className="btn-secondary flex-1"
                 >
                   Cancel
                 </button>
                 <button type="submit" className="btn-primary flex-1">
-                  Create
+                  {editingBudget ? 'Update Budget' : 'Create Budget'}
                 </button>
               </div>
             </form>

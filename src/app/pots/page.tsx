@@ -5,13 +5,16 @@ import { supabase } from '@/lib/supabase'
 import Card from '@/components/Card'
 import { formatCurrency } from '@/lib/utils'
 import { Pot } from '@/types'
-import { Plus, X, Target, TrendingUp, DollarSign, Clock } from 'lucide-react'
+import { Plus, X, Target, TrendingUp, DollarSign, Clock, Trash2, Edit2 } from 'lucide-react'
 
 export default function PotsPage() {
   const [pots, setPots] = useState<Pot[]>([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [showTransactionModal, setShowTransactionModal] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [potToDelete, setPotToDelete] = useState<Pot | null>(null)
+  const [editingPot, setEditingPot] = useState<Pot | null>(null)
   const [selectedPot, setSelectedPot] = useState<Pot | null>(null)
   const [transactionType, setTransactionType] = useState<'add' | 'withdraw'>('add')
   const [transactionAmount, setTransactionAmount] = useState('')
@@ -66,23 +69,42 @@ export default function PotsPage() {
     }
 
     try {
-      // Insert into database
-      const { data, error } = await supabase.from('pots').insert({
-        user_id: user.id,
-        name: formData.name,
-        target: parseFloat(formData.target),
-        total: parseFloat(formData.total) || 0,
-        theme: 'accent-cyan',
-      }).select()
+      if (editingPot) {
+        // Update existing pot
+        const { error } = await supabase
+          .from('pots')
+          .update({
+            name: formData.name,
+            target: parseFloat(formData.target),
+            total: parseFloat(formData.total) || 0,
+          })
+          .eq('id', editingPot.id)
 
-      if (error) {
-        console.error('Error creating pot:', error)
-        alert(`Failed to create savings goal: ${error.message}`)
-        return
+        if (error) {
+          console.error('Error updating savings goal:', error)
+          alert(`Failed to update savings goal: ${error.message}`)
+          return
+        }
+      } else {
+        // Insert new pot
+        const { error } = await supabase.from('pots').insert({
+          user_id: user.id,
+          name: formData.name,
+          target: parseFloat(formData.target),
+          total: parseFloat(formData.total) || 0,
+          theme: 'accent-cyan',
+        }).select()
+
+        if (error) {
+          console.error('Error creating pot:', error)
+          alert(`Failed to create savings goal: ${error.message}`)
+          return
+        }
       }
 
       // Success - close modal and reset form
       setShowModal(false)
+      setEditingPot(null)
       setFormData({ name: '', target: '', total: '' })
       
       // Refresh data
@@ -90,6 +112,41 @@ export default function PotsPage() {
     } catch (err) {
       console.error('Unexpected error:', err)
       alert('An unexpected error occurred. Please try again.')
+    }
+  }
+
+  const handleEditPot = (pot: Pot) => {
+    setEditingPot(pot)
+    setFormData({
+      name: pot.name,
+      target: pot.target.toString(),
+      total: pot.total.toString(),
+    })
+    setShowModal(true)
+  }
+
+  const handleDeletePot = async () => {
+    if (!potToDelete) return
+
+    try {
+      const { error } = await supabase
+        .from('pots')
+        .delete()
+        .eq('id', potToDelete.id)
+
+      if (error) {
+        console.error('Error deleting savings goal:', error)
+        alert(`Failed to delete savings goal: ${error.message}`)
+        return
+      }
+
+      // Success
+      setShowDeleteConfirm(false)
+      setPotToDelete(null)
+      fetchPots()
+    } catch (err) {
+      console.error('Unexpected error:', err)
+      alert('An unexpected error occurred')
     }
   }
 
@@ -274,10 +331,16 @@ export default function PotsPage() {
             <div className="w-10 h-10 bg-accent-yellow rounded-full flex items-center justify-center">
               <Clock className="w-5 h-5 text-white" />
             </div>
-            <span className="text-sm text-grey-600">Near Target</span>
+            <span className="text-sm text-grey-600">Almost There!</span>
           </div>
           <p className="text-4xl font-bold text-grey-900">{nearTargetGoals}</p>
-          <p className="text-sm text-grey-500 mt-1">Within 10% of target</p>
+          <p className="text-sm text-grey-500 mt-1">
+            {nearTargetGoals === 0 
+              ? 'No goals near completion' 
+              : nearTargetGoals === 1 
+              ? '1 goal within 10% of target' 
+              : `${nearTargetGoals} goals within 10% of target`}
+          </p>
         </Card>
 
         <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-none">
@@ -328,17 +391,36 @@ export default function PotsPage() {
             return (
               <Card key={pot.id} className={`${isCompleted ? 'bg-gradient-to-br from-green-50 to-white border-green-200' : ''}`}>
                 <div className="flex items-start justify-between mb-4">
-                  <div>
+                  <div className="flex-1">
                     <h3 className="text-lg font-bold text-grey-900 mb-1">{pot.name}</h3>
                     <p className="text-sm text-grey-500">
                       {isCompleted ? 'Goal Achieved! 🎉' : `${percentage.toFixed(0)}% Complete`}
                     </p>
                   </div>
-                  {isCompleted && (
-                    <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
-                      <span className="text-white text-lg">✓</span>
-                    </div>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {isCompleted && (
+                      <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
+                        <span className="text-white text-lg">✓</span>
+                      </div>
+                    )}
+                    <button
+                      onClick={() => handleEditPot(pot)}
+                      className="p-2 hover:bg-blue-50 rounded-lg transition-colors"
+                      title="Edit goal"
+                    >
+                      <Edit2 className="w-4 h-4 text-primary" />
+                    </button>
+                    <button
+                      onClick={() => {
+                        setPotToDelete(pot)
+                        setShowDeleteConfirm(true)
+                      }}
+                      className="p-2 hover:bg-red-50 rounded-lg transition-colors"
+                      title="Delete goal"
+                    >
+                      <Trash2 className="w-4 h-4 text-accent-red" />
+                    </button>
+                  </div>
                 </div>
 
                 <div className="mb-4">
@@ -383,6 +465,60 @@ export default function PotsPage() {
               </Card>
             )
           })}
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && potToDelete && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-2xl font-bold text-grey-900">Delete Savings Goal?</h3>
+              <button
+                onClick={() => {
+                  setShowDeleteConfirm(false)
+                  setPotToDelete(null)
+                }}
+                className="p-2 hover:bg-grey-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="mb-6">
+              <p className="text-grey-700 mb-4">
+                Are you sure you want to delete <strong>{potToDelete.name}</strong>?
+              </p>
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+                <p className="text-sm text-yellow-800">
+                  💰 Current savings: <strong>{formatCurrency(Number(potToDelete.total))}</strong>
+                </p>
+              </div>
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                <p className="text-sm text-red-800">
+                  ⚠️ This action cannot be undone. The money in this goal will remain in your account, but you'll lose the goal tracking.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowDeleteConfirm(false)
+                  setPotToDelete(null)
+                }}
+                className="btn-secondary flex-1"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeletePot}
+                className="flex-1 px-5 py-3 rounded-lg font-semibold bg-accent-red text-white hover:bg-red-700 transition-colors"
+              >
+                Delete Goal
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -464,14 +600,20 @@ export default function PotsPage() {
         </div>
       )}
 
-      {/* Create Goal Modal */}
+      {/* Create/Edit Goal Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl p-6 max-w-md w-full">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-2xl font-bold text-grey-900">Create Saving Goal</h3>
+              <h3 className="text-2xl font-bold text-grey-900">
+                {editingPot ? 'Edit Savings Goal' : 'Create Savings Goal'}
+              </h3>
               <button
-                onClick={() => setShowModal(false)}
+                onClick={() => {
+                  setShowModal(false)
+                  setEditingPot(null)
+                  setFormData({ name: '', target: '', total: '' })
+                }}
                 className="p-2 hover:bg-grey-100 rounded-lg transition-colors"
               >
                 <X className="w-5 h-5" />
@@ -527,13 +669,17 @@ export default function PotsPage() {
               <div className="flex gap-3 pt-4">
                 <button
                   type="button"
-                  onClick={() => setShowModal(false)}
+                  onClick={() => {
+                    setShowModal(false)
+                    setEditingPot(null)
+                    setFormData({ name: '', target: '', total: '' })
+                  }}
                   className="btn-secondary flex-1"
                 >
                   Cancel
                 </button>
                 <button type="submit" className="btn-primary flex-1">
-                  Create
+                  {editingPot ? 'Update Goal' : 'Create Goal'}
                 </button>
               </div>
             </form>
