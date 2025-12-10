@@ -11,6 +11,10 @@ export default function PotsPage() {
   const [pots, setPots] = useState<Pot[]>([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
+  const [showTransactionModal, setShowTransactionModal] = useState(false)
+  const [selectedPot, setSelectedPot] = useState<Pot | null>(null)
+  const [transactionType, setTransactionType] = useState<'add' | 'withdraw'>('add')
+  const [transactionAmount, setTransactionAmount] = useState('')
   const [formData, setFormData] = useState({
     name: '',
     target: '',
@@ -89,6 +93,71 @@ export default function PotsPage() {
     }
   }
 
+  const handlePotTransaction = async () => {
+    if (!selectedPot || !transactionAmount) return
+
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    try {
+      const amount = parseFloat(transactionAmount)
+      
+      if (transactionType === 'add') {
+        // Add money to pot
+        const newTotal = Number(selectedPot.total) + amount
+        
+        // Update pot total
+        await supabase
+          .from('pots')
+          .update({ total: newTotal })
+          .eq('id', selectedPot.id)
+
+        // Create transaction (expense from main balance to savings)
+        await supabase.from('transactions').insert({
+          user_id: user.id,
+          name: `Added to ${selectedPot.name}`,
+          amount: -amount, // Negative because money leaves main balance
+          date: new Date().toISOString().split('T')[0],
+          category: 'Savings',
+          recurring: false,
+        })
+      } else {
+        // Withdraw money from pot
+        if (amount > Number(selectedPot.total)) {
+          alert('Insufficient funds in savings goal')
+          return
+        }
+
+        const newTotal = Number(selectedPot.total) - amount
+        
+        // Update pot total
+        await supabase
+          .from('pots')
+          .update({ total: newTotal })
+          .eq('id', selectedPot.id)
+
+        // Create transaction (income back to main balance)
+        await supabase.from('transactions').insert({
+          user_id: user.id,
+          name: `Withdrew from ${selectedPot.name}`,
+          amount: amount, // Positive because money returns to main balance
+          date: new Date().toISOString().split('T')[0],
+          category: 'Savings',
+          recurring: false,
+        })
+      }
+
+      // Close modal and refresh
+      setShowTransactionModal(false)
+      setTransactionAmount('')
+      setSelectedPot(null)
+      fetchPots()
+    } catch (err) {
+      console.error('Error processing transaction:', err)
+      alert('Failed to process transaction')
+    }
+  }
+
   const totalSaved = pots.reduce((sum, p) => sum + Number(p.total), 0)
   const activeGoals = pots.filter(p => Number(p.total) < Number(p.target)).length
   const completedGoals = pots.filter(p => Number(p.total) >= Number(p.target)).length
@@ -104,7 +173,32 @@ export default function PotsPage() {
     return progress >= 90 && progress < 100
   }).length
 
-  const thisMonthAdded = 0 // You can calculate this from transactions
+  // Calculate this month's savings additions from transactions
+  const [transactions, setTransactions] = useState<any[]>([])
+  
+  useEffect(() => {
+    if (pots.length > 0) {
+      fetchTransactions()
+    }
+  }, [pots])
+
+  const fetchTransactions = async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    const { data } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('category', 'Savings')
+      .gte('date', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0])
+
+    setTransactions(data || [])
+  }
+
+  const thisMonthAdded = transactions
+    .filter(t => t.amount < 0) // Negative because it's money moved to savings
+    .reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0)
 
   if (loading) {
     return <div className="text-center py-12">Loading...</div>
@@ -265,16 +359,108 @@ export default function PotsPage() {
                 </div>
 
                 <div className="flex gap-2">
-                  <button className="btn-primary flex-1 text-sm py-2">
+                  <button 
+                    onClick={() => {
+                      setSelectedPot(pot)
+                      setTransactionType('add')
+                      setShowTransactionModal(true)
+                    }}
+                    className="btn-primary flex-1 text-sm py-2"
+                  >
                     Add Money
                   </button>
-                  <button className="btn-secondary flex-1 text-sm py-2">
+                  <button 
+                    onClick={() => {
+                      setSelectedPot(pot)
+                      setTransactionType('withdraw')
+                      setShowTransactionModal(true)
+                    }}
+                    className="btn-secondary flex-1 text-sm py-2"
+                  >
                     Withdraw
                   </button>
                 </div>
               </Card>
             )
           })}
+        </div>
+      )}
+
+      {/* Add/Withdraw Transaction Modal */}
+      {showTransactionModal && selectedPot && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-2xl font-bold text-grey-900">
+                {transactionType === 'add' ? 'Add Money' : 'Withdraw Money'}
+              </h3>
+              <button
+                onClick={() => {
+                  setShowTransactionModal(false)
+                  setTransactionAmount('')
+                  setSelectedPot(null)
+                }}
+                className="p-2 hover:bg-grey-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="mb-6">
+              <p className="text-grey-500 mb-2">Savings Goal</p>
+              <p className="text-xl font-bold text-grey-900">{selectedPot.name}</p>
+              <p className="text-sm text-grey-500 mt-1">
+                Current: {formatCurrency(Number(selectedPot.total))} / {formatCurrency(Number(selectedPot.target))}
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-semibold text-grey-900 mb-2">
+                  Amount ($)
+                </label>
+                <input
+                  type="number"
+                  value={transactionAmount}
+                  onChange={(e) => setTransactionAmount(e.target.value)}
+                  placeholder="0.00"
+                  className="input"
+                  min="0"
+                  step="0.01"
+                  max={transactionType === 'withdraw' ? Number(selectedPot.total) : undefined}
+                />
+              </div>
+
+              <div className="bg-beige-100 rounded-lg p-4">
+                <p className="text-sm text-grey-700">
+                  {transactionType === 'add' 
+                    ? '💡 This amount will be deducted from your main balance and added to your savings goal.'
+                    : '💡 This amount will be withdrawn from your savings goal and added back to your main balance.'}
+                </p>
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowTransactionModal(false)
+                    setTransactionAmount('')
+                    setSelectedPot(null)
+                  }}
+                  className="btn-secondary flex-1"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={handlePotTransaction}
+                  disabled={!transactionAmount || parseFloat(transactionAmount) <= 0}
+                  className="btn-primary flex-1 disabled:opacity-50"
+                >
+                  {transactionType === 'add' ? 'Add Money' : 'Withdraw'}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import Card from '@/components/Card'
-import { formatCurrency, formatDate } from '@/lib/utils'
+import { formatCurrency, formatDate, calculatePercentageChange, filterTransactionsByMonth } from '@/lib/utils'
 import { Transaction } from '@/types'
 import { Search, ChevronLeft, ChevronRight, Plus, X, TrendingUp, TrendingDown, ArrowUpDown, Calendar } from 'lucide-react'
 
@@ -153,15 +153,30 @@ export default function TransactionsPage() {
     setCurrentPage(1)
   }
 
-  const totalIncome = transactions
+  // Current month calculations
+  const currentMonthTransactions = filterTransactionsByMonth(transactions, 0)
+  const previousMonthTransactions = filterTransactionsByMonth(transactions, 1)
+
+  const totalIncome = currentMonthTransactions
     .filter(t => t.amount > 0)
     .reduce((sum, t) => sum + Number(t.amount), 0)
 
-  const totalExpense = transactions
+  const totalExpense = currentMonthTransactions
+    .filter(t => t.amount < 0)
+    .reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0)
+
+  const previousIncome = previousMonthTransactions
+    .filter(t => t.amount > 0)
+    .reduce((sum, t) => sum + Number(t.amount), 0)
+
+  const previousExpense = previousMonthTransactions
     .filter(t => t.amount < 0)
     .reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0)
 
   const netBalance = totalIncome - totalExpense
+  const incomeChange = calculatePercentageChange(totalIncome, previousIncome)
+  const expenseChange = calculatePercentageChange(totalExpense, previousExpense)
+  const balanceChange = calculatePercentageChange(netBalance, previousIncome - previousExpense)
 
   const categories = Array.from(new Set(transactions.map(t => t.category)))
   const totalPages = Math.ceil(filteredTransactions.length / ITEMS_PER_PAGE)
@@ -186,7 +201,9 @@ export default function TransactionsPage() {
             <span className="text-grey-500">Total Income</span>
           </div>
           <p className="text-4xl font-bold text-grey-900 mb-1">{formatCurrency(totalIncome)}</p>
-          <p className="text-sm text-primary">+0.0% vs last month</p>
+          <p className={`text-sm ${parseFloat(incomeChange) >= 0 ? 'text-primary' : 'text-accent-red'}`}>
+            {incomeChange}% vs last month
+          </p>
         </Card>
 
         <Card className="bg-gradient-to-br from-red-50 to-white">
@@ -197,7 +214,9 @@ export default function TransactionsPage() {
             <span className="text-grey-500">Total Expense</span>
           </div>
           <p className="text-4xl font-bold text-grey-900 mb-1">{formatCurrency(totalExpense)}</p>
-          <p className="text-sm text-accent-red">+0.0% vs last month</p>
+          <p className={`text-sm ${parseFloat(expenseChange) >= 0 ? 'text-accent-red' : 'text-primary'}`}>
+            {expenseChange}% vs last month
+          </p>
         </Card>
 
         <Card className="bg-gradient-to-br from-blue-50 to-white">
@@ -208,7 +227,9 @@ export default function TransactionsPage() {
             <span className="text-grey-500">Net Balance</span>
           </div>
           <p className="text-4xl font-bold text-grey-900 mb-1">{formatCurrency(netBalance)}</p>
-          <p className="text-sm text-primary">+0.0% vs last month</p>
+          <p className={`text-sm ${parseFloat(balanceChange) >= 0 ? 'text-primary' : 'text-accent-red'}`}>
+            {balanceChange}% vs last month
+          </p>
         </Card>
       </div>
 

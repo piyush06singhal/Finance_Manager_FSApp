@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import Card from '@/components/Card'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, calculatePercentageChange, filterTransactionsByMonth } from '@/lib/utils'
 import { Transaction, Budget, Pot } from '@/types'
 import { TrendingUp, TrendingDown, Plus, ArrowRight } from 'lucide-react'
 import Link from 'next/link'
@@ -19,8 +19,11 @@ export default function DashboardPage() {
 
   useEffect(() => {
     checkUser()
-    // Show welcome popup on every page load
-    setShowWelcome(true)
+    // Show welcome popup only once (check localStorage)
+    const hasSeenWelcome = localStorage.getItem('hasSeenWelcome')
+    if (!hasSeenWelcome) {
+      setShowWelcome(true)
+    }
   }, [])
 
   const checkUser = async () => {
@@ -79,13 +82,29 @@ export default function DashboardPage() {
     setLoading(false)
   }
 
-  const totalIncome = transactions
+  // Current month calculations
+  const currentMonthTransactions = filterTransactionsByMonth(transactions, 0)
+  const previousMonthTransactions = filterTransactionsByMonth(transactions, 1)
+
+  const totalIncome = currentMonthTransactions
     .filter(t => t.amount > 0)
     .reduce((sum, t) => sum + Number(t.amount), 0)
 
-  const totalExpenses = transactions
+  const totalExpenses = currentMonthTransactions
     .filter(t => t.amount < 0)
     .reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0)
+
+  const previousIncome = previousMonthTransactions
+    .filter(t => t.amount > 0)
+    .reduce((sum, t) => sum + Number(t.amount), 0)
+
+  const previousExpenses = previousMonthTransactions
+    .filter(t => t.amount < 0)
+    .reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0)
+
+  const incomeChange = calculatePercentageChange(totalIncome, previousIncome)
+  const expenseChange = calculatePercentageChange(totalExpenses, previousExpenses)
+  const netChange = calculatePercentageChange(totalIncome - totalExpenses, previousIncome - previousExpenses)
 
   const currentDate = new Date().toLocaleDateString('en-US', {
     weekday: 'long',
@@ -127,14 +146,41 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        {/* Info Banner */}
+        <div className="bg-gradient-to-r from-primary/10 to-accent-cyan/10 rounded-xl p-4 mb-6 border border-primary/20">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center flex-shrink-0">
+              <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-grey-900 mb-1">💡 How Your Finance App Works</h3>
+              <p className="text-sm text-grey-700">
+                <strong>Transactions</strong> update your balance. <strong>Budgets</strong> track monthly spending by category. 
+                <strong> Savings</strong> move money from your main balance. <strong>Bills</strong> create automatic expenses when paid. 
+                All data syncs in real-time!
+              </p>
+            </div>
+          </div>
+        </div>
+
         {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-none">
             <p className="text-sm text-grey-500 mb-2 uppercase tracking-wide">Total Balance</p>
             <p className="text-4xl font-bold text-grey-900 mb-2">
-              {formatCurrency(totalIncome - totalExpenses)}
+              {formatCurrency(
+                transactions.filter(t => t.amount > 0).reduce((sum, t) => sum + Number(t.amount), 0) -
+                transactions.filter(t => t.amount < 0).reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0)
+              )}
             </p>
-            <p className="text-sm text-grey-500">All accounts combined</p>
+            <p className="text-sm text-grey-500">
+              Main: {formatCurrency(
+                transactions.filter(t => t.amount > 0 && t.category !== 'Savings').reduce((sum, t) => sum + Number(t.amount), 0) -
+                transactions.filter(t => t.amount < 0 && t.category !== 'Savings').reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0)
+              )} | Savings: {formatCurrency(pots.reduce((sum, p) => sum + Number(p.total), 0))}
+            </p>
           </Card>
 
           <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-none">
@@ -142,19 +188,26 @@ export default function DashboardPage() {
             <p className="text-4xl font-bold text-grey-900 mb-2">
               {formatCurrency(totalExpenses)}
             </p>
-            <p className="text-sm text-grey-500">Budget: {formatCurrency(budgets.reduce((sum, b) => sum + Number(b.maximum), 0))}</p>
+            <p className="text-sm text-grey-500">
+              Budget: {formatCurrency(budgets.reduce((sum, b) => sum + Number(b.maximum), 0))}
+              {budgets.length > 0 && (
+                <span className={`ml-2 ${totalExpenses > budgets.reduce((sum, b) => sum + Number(b.maximum), 0) ? 'text-accent-red' : 'text-primary'}`}>
+                  ({((totalExpenses / budgets.reduce((sum, b) => sum + Number(b.maximum), 0)) * 100).toFixed(0)}%)
+                </span>
+              )}
+            </p>
           </Card>
 
           <Card className="bg-gradient-to-br from-green-50 to-green-100 border-none">
             <div className="flex items-start justify-between mb-2">
               <p className="text-sm text-grey-500 uppercase tracking-wide">Net Change</p>
-              <div className="flex items-center gap-1 text-primary text-sm font-semibold">
-                <TrendingUp className="w-4 h-4" />
-                <span>0.0% vs last month</span>
+              <div className={`flex items-center gap-1 text-sm font-semibold ${parseFloat(netChange) >= 0 ? 'text-primary' : 'text-accent-red'}`}>
+                {parseFloat(netChange) >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+                <span>{netChange}% vs last month</span>
               </div>
             </div>
-            <p className="text-4xl font-bold text-primary">
-              +{formatCurrency(totalIncome - totalExpenses)}
+            <p className={`text-4xl font-bold ${totalIncome - totalExpenses >= 0 ? 'text-primary' : 'text-accent-red'}`}>
+              {totalIncome - totalExpenses >= 0 ? '+' : ''}{formatCurrency(totalIncome - totalExpenses)}
             </p>
           </Card>
         </div>
@@ -218,7 +271,7 @@ export default function DashboardPage() {
               ) : (
                 <div className="space-y-4">
                   {budgets.slice(0, 3).map((budget) => {
-                    const spent = transactions
+                    const spent = currentMonthTransactions
                       .filter(t => t.category === budget.category && t.amount < 0)
                       .reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0)
                     const percentage = (spent / Number(budget.maximum)) * 100
@@ -363,7 +416,10 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-3xl font-bold text-grey-900">Welcome to Finance Manager! 👋</h2>
               <button
-                onClick={() => setShowWelcome(false)}
+                onClick={() => {
+                  localStorage.setItem('hasSeenWelcome', 'true')
+                  setShowWelcome(false)
+                }}
                 className="p-2 hover:bg-grey-100 rounded-lg transition-colors"
               >
                 <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -441,7 +497,10 @@ export default function DashboardPage() {
             </div>
 
             <button
-              onClick={() => setShowWelcome(false)}
+              onClick={() => {
+                localStorage.setItem('hasSeenWelcome', 'true')
+                setShowWelcome(false)
+              }}
               className="btn-primary w-full text-lg py-3"
             >
               Got It! Let's Get Started 🎉

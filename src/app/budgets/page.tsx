@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import Card from '@/components/Card'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, filterTransactionsByMonth } from '@/lib/utils'
 import { Budget, Transaction } from '@/types'
 import { Plus, X, PieChart, TrendingUp, DollarSign, Search } from 'lucide-react'
 
@@ -102,9 +102,12 @@ export default function BudgetsPage() {
     }
   }
 
+  // Filter transactions to current month only for budget tracking
+  const currentMonthTransactions = filterTransactionsByMonth(transactions, 0)
+
   const totalBudget = budgets.reduce((sum, b) => sum + Number(b.maximum), 0)
   const totalSpent = budgets.reduce((sum, b) => {
-    const spent = transactions
+    const spent = currentMonthTransactions
       .filter(t => t.category === b.category && t.amount < 0)
       .reduce((s, t) => s + Math.abs(Number(t.amount)), 0)
     return sum + spent
@@ -224,7 +227,7 @@ export default function BudgetsPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {filteredBudgets.map((budget) => {
-            const spent = transactions
+            const spent = currentMonthTransactions
               .filter(t => t.category === budget.category && t.amount < 0)
               .reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0)
             const remaining = Number(budget.maximum) - spent
@@ -266,8 +269,8 @@ export default function BudgetsPage() {
                 </div>
 
                 <div className="pt-4 border-t border-grey-100">
-                  <p className="text-sm font-semibold text-grey-900 mb-2">Recent Transactions</p>
-                  {transactions
+                  <p className="text-sm font-semibold text-grey-900 mb-2">Recent Transactions (This Month)</p>
+                  {currentMonthTransactions
                     .filter(t => t.category === budget.category && t.amount < 0)
                     .slice(0, 3)
                     .map((transaction) => (
@@ -278,8 +281,8 @@ export default function BudgetsPage() {
                         </span>
                       </div>
                     ))}
-                  {transactions.filter(t => t.category === budget.category && t.amount < 0).length === 0 && (
-                    <p className="text-sm text-grey-400 py-2">No transactions yet</p>
+                  {currentMonthTransactions.filter(t => t.category === budget.category && t.amount < 0).length === 0 && (
+                    <p className="text-sm text-grey-400 py-2">No transactions this month</p>
                   )}
                 </div>
               </Card>

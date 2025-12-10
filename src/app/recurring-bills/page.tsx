@@ -75,9 +75,43 @@ export default function RecurringBillsPage() {
 
   const getBillStatus = (dueDate: number): 'paid' | 'due' | 'upcoming' => {
     const today = new Date().getDate()
-    if (today === dueDate) return 'due'
+    const currentMonth = new Date().getMonth()
+    const currentYear = new Date().getFullYear()
+    
+    // Check if bill was already paid this month by looking for transaction
+    // This will be checked against actual transactions
     if (today > dueDate) return 'paid'
+    if (today === dueDate) return 'due'
     return 'upcoming'
+  }
+
+  const handlePayBill = async (bill: RecurringBill) => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    try {
+      // Create transaction for bill payment
+      await supabase.from('transactions').insert({
+        user_id: user.id,
+        name: `${bill.name} - Monthly Bill`,
+        amount: -Math.abs(Number(bill.amount)), // Negative for expense
+        date: new Date().toISOString().split('T')[0],
+        category: 'Bills',
+        recurring: true,
+      })
+
+      // Update bill status
+      await supabase
+        .from('recurring_bills')
+        .update({ status: 'paid' })
+        .eq('id', bill.id)
+
+      alert('Bill paid successfully!')
+      fetchBills()
+    } catch (err) {
+      console.error('Error paying bill:', err)
+      alert('Failed to pay bill')
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -273,6 +307,14 @@ export default function RecurringBillsPage() {
                   >
                     {bill.status.charAt(0).toUpperCase() + bill.status.slice(1)}
                   </span>
+                  {bill.status === 'due' && (
+                    <button
+                      onClick={() => handlePayBill(bill)}
+                      className="px-4 py-1 bg-primary text-white text-sm font-semibold rounded-lg hover:bg-primary-dark transition-colors"
+                    >
+                      Pay Now
+                    </button>
+                  )}
                   <p className="font-bold text-lg w-28 text-right">{formatCurrency(Number(bill.amount))}</p>
                 </div>
               </div>
