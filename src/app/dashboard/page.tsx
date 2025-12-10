@@ -314,16 +314,34 @@ export default function DashboardPage() {
           <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-none">
             <p className="text-sm text-grey-500 mb-2 uppercase tracking-wide">Total Balance</p>
             <p className="text-4xl font-bold text-grey-900 mb-2">
-              {formatCurrency(
-                transactions.filter(t => t.amount > 0).reduce((sum, t) => sum + Number(t.amount), 0) -
-                transactions.filter(t => t.amount < 0).reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0)
-              )}
+              {(() => {
+                // Calculate total balance (all income - all expenses)
+                const totalIncome = transactions.filter(t => t.amount > 0).reduce((sum, t) => sum + Number(t.amount), 0)
+                const totalExpenses = transactions.filter(t => t.amount < 0).reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0)
+                const totalBalance = totalIncome - totalExpenses
+                
+                return formatCurrency(totalBalance)
+              })()}
             </p>
             <p className="text-sm text-grey-500">
-              Main: {formatCurrency(
-                transactions.filter(t => t.amount > 0 && t.category !== 'Savings').reduce((sum, t) => sum + Number(t.amount), 0) -
-                transactions.filter(t => t.amount < 0 && t.category !== 'Savings').reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0)
-              )} | Savings: {formatCurrency(pots.reduce((sum, p) => sum + Number(p.total), 0))}
+              {(() => {
+                // Calculate total balance
+                const totalIncome = transactions.filter(t => t.amount > 0).reduce((sum, t) => sum + Number(t.amount), 0)
+                const totalExpenses = transactions.filter(t => t.amount < 0).reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0)
+                const totalBalance = totalIncome - totalExpenses
+                
+                // Calculate savings balance
+                const savingsBalance = pots.reduce((sum, p) => sum + Number(p.total), 0)
+                
+                // Main balance = Total - Savings
+                const mainBalance = totalBalance - savingsBalance
+                
+                return (
+                  <>
+                    Main: {formatCurrency(mainBalance)} | Savings: {formatCurrency(savingsBalance)}
+                  </>
+                )
+              })()}
             </p>
           </Card>
 
