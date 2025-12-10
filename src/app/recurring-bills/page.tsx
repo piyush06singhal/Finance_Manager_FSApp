@@ -61,12 +61,22 @@ export default function RecurringBillsPage() {
         }, { onConflict: 'id' })
       }
 
-      const { data } = await supabase.from('recurring_bills').select('*').eq('user_id', user.id)
+      // Fetch bills and transactions
+      const [billsRes, transactionsRes] = await Promise.all([
+        supabase.from('recurring_bills').select('*').eq('user_id', user.id),
+        supabase.from('transactions').select('*').eq('user_id', user.id).eq('category', 'Bills')
+      ])
       
-      const billsWithStatus = (data || []).map(bill => ({
-        ...bill,
-        status: getBillStatus(bill.due_date)
-      }))
+      const transactions = transactionsRes.data || []
+      
+      // Check payment status for each bill
+      const billsWithStatus = (billsRes.data || []).map(bill => {
+        const isPaidThisMonth = checkIfBillPaidThisMonth(bill, transactions)
+        return {
+          ...bill,
+          status: isPaidThisMonth ? 'paid' : getBillStatus(bill.due_date)
+        }
+      })
 
       setBills(billsWithStatus)
       setLoading(false)
@@ -76,14 +86,28 @@ export default function RecurringBillsPage() {
     }
   }
 
+  const checkIfBillPaidThisMonth = (bill: RecurringBill, transactions: any[]): boolean => {
+    const now = new Date()
+    const currentMonth = now.getMonth()
+    const currentYear = now.getFullYear()
+    
+    // Check if there's a transaction for this bill in current month
+    return transactions.some(t => {
+      const transactionDate = new Date(t.date)
+      const isCurrentMonth = transactionDate.getMonth() === currentMonth && 
+                            transactionDate.getFullYear() === currentYear
+      const matchesBill = t.name.toLowerCase().includes(bill.name.toLowerCase()) ||
+                         t.name.toLowerCase().includes('monthly bill')
+      
+      return isCurrentMonth && matchesBill && Math.abs(Number(t.amount)) === Number(bill.amount)
+    })
+  }
+
   const getBillStatus = (dueDate: number): 'paid' | 'due' | 'upcoming' => {
     const today = new Date().getDate()
-    const currentMonth = new Date().getMonth()
-    const currentYear = new Date().getFullYear()
     
-    // Check if bill was already paid this month by looking for transaction
-    // This will be checked against actual transactions
-    if (today > dueDate) return 'paid'
+    // If past due date and not paid, still show as due
+    if (today > dueDate) return 'due'
     if (today === dueDate) return 'due'
     return 'upcoming'
   }

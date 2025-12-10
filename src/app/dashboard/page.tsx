@@ -9,6 +9,7 @@ import { TrendingUp, TrendingDown, Plus, ArrowRight } from 'lucide-react'
 import Link from 'next/link'
 import SpendingPieChart from '@/components/SpendingPieChart'
 import IncomeExpenseChart from '@/components/IncomeExpenseChart'
+import TutorialModal from '@/components/TutorialModal'
 
 export default function DashboardPage() {
   const [user, setUser] = useState<any>(null)
@@ -19,13 +20,14 @@ export default function DashboardPage() {
   const [bills, setBills] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [showWelcome, setShowWelcome] = useState(false)
+  const [showTutorial, setShowTutorial] = useState(false)
 
   useEffect(() => {
     checkUser()
-    // Show welcome popup only once (check localStorage)
-    const hasSeenWelcome = localStorage.getItem('hasSeenWelcome')
-    if (!hasSeenWelcome) {
-      setShowWelcome(true)
+    // Show tutorial only once (check localStorage)
+    const hasSeenTutorial = localStorage.getItem('hasSeenTutorial')
+    if (!hasSeenTutorial) {
+      setShowTutorial(true)
     }
   }, [])
 
@@ -80,18 +82,38 @@ export default function DashboardPage() {
       supabase.from('recurring_bills').select('*').eq('user_id', userId),
     ])
 
-    setTransactions(transactionsRes.data || [])
+    const allTransactions = transactionsRes.data || []
+    setTransactions(allTransactions)
     setBudgets(budgetsRes.data || [])
     setPots(potsRes.data || [])
     
-    // Add status to bills
-    const billsWithStatus = (billsRes.data || []).map(bill => ({
-      ...bill,
-      status: getBillStatus(bill.due_date)
-    }))
+    // Add status to bills based on actual payments
+    const billTransactions = allTransactions.filter(t => t.category === 'Bills')
+    const billsWithStatus = (billsRes.data || []).map(bill => {
+      const isPaidThisMonth = checkIfBillPaidThisMonth(bill, billTransactions)
+      return {
+        ...bill,
+        status: isPaidThisMonth ? 'paid' : getBillStatus(bill.due_date)
+      }
+    })
     setBills(billsWithStatus)
     
     setLoading(false)
+  }
+
+  const checkIfBillPaidThisMonth = (bill: any, transactions: any[]): boolean => {
+    const now = new Date()
+    const currentMonth = now.getMonth()
+    const currentYear = now.getFullYear()
+    
+    return transactions.some(t => {
+      const transactionDate = new Date(t.date)
+      const isCurrentMonth = transactionDate.getMonth() === currentMonth && 
+                            transactionDate.getFullYear() === currentYear
+      const matchesBill = t.name.toLowerCase().includes(bill.name.toLowerCase())
+      
+      return isCurrentMonth && matchesBill && Math.abs(Number(t.amount)) === Number(bill.amount)
+    })
   }
 
   const getBillStatus = (dueDate: number): 'paid' | 'due' | 'upcoming' => {
@@ -285,24 +307,7 @@ export default function DashboardPage() {
           </>
         )}
 
-        {/* Info Banner */}
-        <div className="bg-gradient-to-r from-primary/10 to-accent-cyan/10 rounded-xl p-4 mb-6 border border-primary/20">
-          <div className="flex items-start gap-3">
-            <div className="w-10 h-10 bg-primary rounded-full flex items-center justify-center flex-shrink-0">
-              <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-            <div className="flex-1">
-              <h3 className="font-semibold text-grey-900 mb-1">💡 How Your Finance App Works</h3>
-              <p className="text-sm text-grey-700">
-                <strong>Transactions</strong> update your balance. <strong>Budgets</strong> track monthly spending by category. 
-                <strong> Savings</strong> move money from your main balance. <strong>Bills</strong> create automatic expenses when paid. 
-                All data syncs in real-time!
-              </p>
-            </div>
-          </div>
-        </div>
+
 
         {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
@@ -619,7 +624,17 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* Welcome Modal */}
+      {/* Tutorial Modal */}
+      {showTutorial && (
+        <TutorialModal 
+          onClose={() => {
+            localStorage.setItem('hasSeenTutorial', 'true')
+            setShowTutorial(false)
+          }}
+        />
+      )}
+
+      {/* Old Welcome Modal (keeping for backward compatibility) */}
       {showWelcome && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
