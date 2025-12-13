@@ -4,9 +4,55 @@ export function cn(...inputs: ClassValue[]) {
   return clsx(inputs)
 }
 
-export function formatCurrency(amount: number): string {
+// Exchange rates relative to USD (fallback rates)
+let EXCHANGE_RATES: { [key: string]: number } = {
+  USD: 1,
+  EUR: 0.92,
+  GBP: 0.79,
+  INR: 83.12,
+}
+
+// Load exchange rates from localStorage if available
+if (typeof window !== 'undefined') {
+  const cachedRates = localStorage.getItem('exchangeRates')
+  if (cachedRates) {
+    try {
+      const parsed = JSON.parse(cachedRates)
+      EXCHANGE_RATES = parsed.rates || EXCHANGE_RATES
+    } catch (e) {
+      // Use fallback rates
+    }
+  }
+}
+
+// Function to update exchange rates (call this periodically)
+export async function updateExchangeRates() {
+  if (typeof window === 'undefined') return
+  
+  try {
+    const response = await fetch('/api/exchange-rates')
+    const data = await response.json()
+    
+    EXCHANGE_RATES = data.rates
+    localStorage.setItem('exchangeRates', JSON.stringify({
+      rates: data.rates,
+      lastUpdated: data.lastUpdated
+    }))
+  } catch (error) {
+    console.error('Failed to update exchange rates:', error)
+  }
+}
+
+export function convertCurrency(amount: number, fromCurrency: string = 'USD', toCurrency: string = 'USD'): number {
+  // Convert to USD first, then to target currency
+  const amountInUSD = amount / EXCHANGE_RATES[fromCurrency]
+  const convertedAmount = amountInUSD * EXCHANGE_RATES[toCurrency]
+  return convertedAmount
+}
+
+export function formatCurrency(amount: number, baseCurrency: string = 'USD'): string {
   // Get currency from localStorage (set in profile page)
-  let currency = 'USD'
+  let displayCurrency = 'USD'
   let locale = 'en-US'
   
   if (typeof window !== 'undefined') {
@@ -14,10 +60,10 @@ export function formatCurrency(amount: number): string {
     if (settings) {
       try {
         const parsed = JSON.parse(settings)
-        currency = parsed.currency || 'USD'
+        displayCurrency = parsed.currency || 'USD'
         
         // Set appropriate locale based on currency
-        switch (currency) {
+        switch (displayCurrency) {
           case 'INR':
             locale = 'en-IN'
             break
@@ -36,10 +82,15 @@ export function formatCurrency(amount: number): string {
     }
   }
   
+  // Convert amount if currencies are different
+  const convertedAmount = displayCurrency !== baseCurrency 
+    ? convertCurrency(amount, baseCurrency, displayCurrency)
+    : amount
+  
   return new Intl.NumberFormat(locale, {
     style: 'currency',
-    currency: currency,
-  }).format(amount)
+    currency: displayCurrency,
+  }).format(convertedAmount)
 }
 
 export function formatDate(date: string): string {

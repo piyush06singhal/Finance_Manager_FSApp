@@ -22,6 +22,7 @@ export default function ProfilePage() {
     emailNotifications: true,
     pushNotifications: false,
     currency: 'USD',
+    baseCurrency: 'USD', // The currency your data is stored in
     language: 'English (US)',
   })
   const [settingsSaved, setSettingsSaved] = useState(false)
@@ -113,6 +114,11 @@ export default function ProfilePage() {
     localStorage.setItem('userSettings', JSON.stringify(settings))
     setSettingsSaved(true)
     setTimeout(() => setSettingsSaved(false), 3000)
+    
+    // Reload page to apply currency conversion
+    setTimeout(() => {
+      window.location.reload()
+    }, 1000)
   }
 
   const handleChangePassword = async (e: React.FormEvent) => {
@@ -365,11 +371,11 @@ export default function ProfilePage() {
         <div className="space-y-6">
           <div>
             <label className="block text-sm font-semibold text-grey-900 mb-2">
-              Currency Preference
+              Base Currency (Your data is stored in)
             </label>
             <select
-              value={settings.currency}
-              onChange={(e) => setSettings({ ...settings, currency: e.target.value })}
+              value={settings.baseCurrency}
+              onChange={(e) => setSettings({ ...settings, baseCurrency: e.target.value })}
               className="input"
             >
               <option value="USD">USD - US Dollar</option>
@@ -377,6 +383,46 @@ export default function ProfilePage() {
               <option value="GBP">GBP - British Pound</option>
               <option value="INR">INR - Indian Rupee</option>
             </select>
+            <p className="text-xs text-grey-500 mt-1">
+              This is the currency your transactions are stored in. Change this only if you want to change your base currency.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-grey-900 mb-2">
+              Display Currency
+            </label>
+            <select
+              value={settings.currency}
+              onChange={(e) => setSettings({ ...settings, currency: e.target.value })}
+              className="input"
+            >
+              <option value="USD">USD - US Dollar ($)</option>
+              <option value="EUR">EUR - Euro (€)</option>
+              <option value="GBP">GBP - British Pound (£)</option>
+              <option value="INR">INR - Indian Rupee (₹)</option>
+            </select>
+            <p className="text-xs text-grey-500 mt-1">
+              All amounts will be converted and displayed in this currency using current exchange rates.
+            </p>
+            {settings.currency !== settings.baseCurrency && (
+              <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-sm text-blue-800">
+                  <strong>Exchange Rate:</strong> 1 {settings.baseCurrency} = {
+                    (() => {
+                      const rates: { [key: string]: number } = {
+                        USD: 1,
+                        EUR: 0.92,
+                        GBP: 0.79,
+                        INR: 83.12,
+                      }
+                      const rate = (rates[settings.currency] / rates[settings.baseCurrency]).toFixed(2)
+                      return rate
+                    })()
+                  } {settings.currency}
+                </p>
+              </div>
+            )}
           </div>
 
           <div>

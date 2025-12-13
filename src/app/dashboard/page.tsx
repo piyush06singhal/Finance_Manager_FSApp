@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import Card from '@/components/Card'
-import { formatCurrency, calculatePercentageChange, filterTransactionsByMonth } from '@/lib/utils'
+import { formatCurrency, calculatePercentageChange, filterTransactionsByMonth, updateExchangeRates } from '@/lib/utils'
 import { Transaction, Budget, Pot } from '@/types'
 import { TrendingUp, TrendingDown, Plus, ArrowRight } from 'lucide-react'
 import Link from 'next/link'
@@ -24,6 +24,8 @@ export default function DashboardPage() {
 
   useEffect(() => {
     checkUser()
+    // Update exchange rates on load
+    updateExchangeRates()
     // Show tutorial only once (check localStorage)
     const hasSeenTutorial = localStorage.getItem('hasSeenTutorial')
     if (!hasSeenTutorial) {
