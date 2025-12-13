@@ -5,9 +5,40 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('en-US', {
+  // Get currency from localStorage (set in profile page)
+  let currency = 'USD'
+  let locale = 'en-US'
+  
+  if (typeof window !== 'undefined') {
+    const settings = localStorage.getItem('userSettings')
+    if (settings) {
+      try {
+        const parsed = JSON.parse(settings)
+        currency = parsed.currency || 'USD'
+        
+        // Set appropriate locale based on currency
+        switch (currency) {
+          case 'INR':
+            locale = 'en-IN'
+            break
+          case 'EUR':
+            locale = 'de-DE'
+            break
+          case 'GBP':
+            locale = 'en-GB'
+            break
+          default:
+            locale = 'en-US'
+        }
+      } catch (e) {
+        // If parsing fails, use defaults
+      }
+    }
+  }
+  
+  return new Intl.NumberFormat(locale, {
     style: 'currency',
-    currency: 'USD',
+    currency: currency,
   }).format(amount)
 }
 
